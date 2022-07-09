@@ -64,4 +64,3 @@ include_directories(
 add_executable(emplaner_node ${src_file})
 target_link_libraries(emplaner_node ${catkin_LIBRARIES} -lxerces-c)
 target_link_libraries(emplaner_node libqpOASES.a)
-target_link_libraries(emplaner_node libquadprog.a)
