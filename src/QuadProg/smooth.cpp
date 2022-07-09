@@ -1,4 +1,3 @@
-// #include "QuadProg/QuadProg++.h"
 #include "QuadProg/smooth.h"
 #include "global/global_planning.h"
 #include "obstacle/obstacle.h"
