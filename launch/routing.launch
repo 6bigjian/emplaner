@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<launch>
+
+    <!-- 给其他launch的地图文件 -->
+    <arg name="lanelet2_map_path" value="/home/big_jian/Sleipnir/data/hdmap/GDUT_2_josm.osm"/>
+    <param name="hdmap_file_map" value="$(arg lanelet2_map_path)" />
+    
+    <!-- 仿真标志 -->
+    <arg name="is_simulation" value="true"/>
+    <param name="simulation_model"  value="$(arg is_simulation)"/>
+
+    <!-- MGRS坐标加载地图，如果用UTM要注释掉 -->
+    <include file="$(find map_loader)/launch/lanelet2_map_loader.launch">
+        <arg name="file_name" value="$(arg lanelet2_map_path)" />
+    </include>
+
+    <node pkg="emplaner" type="emplaner_node" name="start_node" output="screen" />
+
+
+    <!-- 仿真下开启的launch -->
+    <include file="$(find vehicle_description)/launch/lexus.launch" />
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find lins)/launch/localization_demo.rviz"/>
+
+    <include file="$(find lins)/launch/staticTFpub.launch" />
+
+</launch>
