@@ -3,7 +3,6 @@
 
 #if qpsolver == qpoasessolver
 
-
 /*SL坐标系平滑矩阵*/
 qpOASES::real_t* H_SL_f;
 qpOASES::real_t* f_SL_f;
@@ -526,6 +525,19 @@ void SmoLine::qpOASES_XYsolver()
     calc_traj_theta();
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

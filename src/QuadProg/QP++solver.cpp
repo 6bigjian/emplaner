@@ -1,7 +1,7 @@
 #include "QuadProg/smooth.h"
-#include <QuadProg++/QuadProg++.hh>
+#include "QuadProg/QuadProg++.h"
 
-
+#if qpsolver == QuadProgslover
 //平滑动态规划得出的SL曲线
 void SmoLine::QuadProg_solver()
 {
@@ -67,6 +67,7 @@ void SmoLine::QuadProg_solver()
       b_eq[2*(arraysize-1) + 1] =  -plan_start_mags.dl;
       b_eq[2*(arraysize-1) + 2] =  -plan_start_mags.ddl;
   }
+
 
   //生成b
   quadprogpp::Vector<double> b(8*arraysize);
@@ -197,3 +198,22 @@ void SmoLine::QuadProg_solver()
   //   throw std::runtime_error("line is error");
   // }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#endif

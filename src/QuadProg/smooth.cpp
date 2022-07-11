@@ -2,6 +2,7 @@
 #include "global/global_planning.h"
 #include "obstacle/obstacle.h"
 
+
 /*读回ros odom坐标系数据 , 接收车的里程信息，控制车的移动*/
 void SmoLine::odom_call_back(const nav_msgs::Odometry& odom)
 {
