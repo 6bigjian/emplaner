@@ -5,11 +5,19 @@
 #define arrayCapacity 40u
 
 
-#define    QuadProgslover     0   //QuadProg++求解器
-#define    qpoasessolver      1     //qpOASES求解器
+#define    qpoasessolver      0     //qpOASES求解器
+#define    qpsolver   qpoasessolver
 
+enum{
+  LINEBACK = -2,  //在规划后面
+  LINEFRONT = -1  //超出规划范围
+};
 
-#define qpsolver  qpoasessolver
+enum objpoint{
+  MINPOINT = 0,
+  MIDPOINT,
+  MAXPOINT
+};
 
 class SmoLine
 { 
@@ -23,14 +31,13 @@ public:
 
   void sml_thread_worker();
   void generate_convex_space();
-  int16_t FindNearIndex(double s_set);
+  int16_t FindNearIndex(const double s_set);
+  int16_t FindObjIndex(const double s_set, objpoint OBJPOINT);
   void Frenet_trans_Cartesian();
   void Cartesian2Frenet();
   
   bool Calc_Plan_Start_Point();
   void calc_traj_theta();
-
-  void QuadProg_solver();
 
   /*qpOASES求解器函数*/
   void qpOASES_init();

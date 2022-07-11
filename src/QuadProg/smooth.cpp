@@ -119,10 +119,7 @@ void SmoLine::sml_thread_worker()
       global_date::obj_mutex.unlock();
       this->first_sml = false;
 
-      #if(qpsolver == QuadProgslover)
-        QuadProg_solver();
-
-      #elif (qpsolver == qpoasessolver)
+      #if (qpsolver == qpoasessolver)
         if(arraysize == arrayCapacity) qpOASES_solver();
         else qpOASES_solver(arraysize);
         
@@ -144,6 +141,7 @@ void SmoLine::generate_convex_space()
 {
   this->retraj = Calc_Plan_Start_Point();
 
+  double start_s;
   if(this->retraj == true) //从车辆起点开始规划
   {
     Cartesian2Frenet();
@@ -152,47 +150,46 @@ void SmoLine::generate_convex_space()
     int16_t start_index = Global_Plan::Search_Match_Point(New_car_pose.position.x, New_car_pose.position.y, 
                         reference_path.referenceline, 0, reference_path.referenceline.poses.size()-1);
 
-    double start_s = reference_path.s[start_index];
-
-    plan_startIndex = FindNearIndex(start_s);
-    if(plan_startIndex < 0) plan_startIndex = 0;
+    start_s = reference_path.s[start_index];
 
     for(uint16_t i = 0; i < arrayCapacity; i++)
     {
-      if(plan_startIndex + i < dynamic_frenet.size())
+      if(start_s + i*this->ds < dynamic_frenet.back().s) //平滑的路径要在动态规划的范围内
       {
-        L_limit[i][0] = dynamic_frenet[plan_startIndex + i].s;
+        L_limit[i][0] = start_s + i*this->ds;
         L_limit[i][1] = borderLimit;
         L_limit[i][2] = -borderLimit;
+
+        int16_t match_index = FindNearIndex(L_limit[i][0]);
+        if(match_index == -2) match_index = 0;
+
+        L_limit[i][3] = dynamic_frenet[match_index].l;
+
         arraysize = i+1;
       }
-      else L_limit[i][0] = -1;
-
-      L_limit[i][3] = 0;
     }
   }
   else//保留上一时刻部分轨迹
   {
-    double start_s = L_limit[vehTotraj_projIndex_][0];
-
-    plan_startIndex = FindNearIndex(start_s);
-
-    if(plan_startIndex < 0) plan_startIndex = 0;
+    start_s = L_limit[vehTotraj_projIndex_][0];
 
     for(uint16_t i = 0; i < arrayCapacity; i++)
     {
-      if(plan_startIndex + i < dynamic_frenet.size()) //符号强转问题，导致-2比正数大。
+      if(start_s + i*this->ds < dynamic_frenet.back().s) //平滑的路径要在动态规划的范围内
       {
-        L_limit[i][0] = dynamic_frenet[plan_startIndex + i].s;
+        L_limit[i][0] = start_s + i*this->ds;
         L_limit[i][1] = borderLimit;
         L_limit[i][2] = -borderLimit;
+
+        int16_t match_index = FindNearIndex(L_limit[i][0]);
+        if(match_index == -2) match_index = 0;
+
+        //递归保留上一时刻二次规划出来的道路
+        if(i < retaintraj_num - vehTotraj_projIndex_) L_limit[i][3] = L_limit[i + vehTotraj_projIndex_][3];
+        else L_limit[i][3] = dynamic_frenet[match_index].l;
+
         arraysize = i+1;
       }
-      else L_limit[i][0] = -1;
-
-      //递归保留上一时刻二次规划出来的道路
-      if(i < retaintraj_num - vehTotraj_projIndex_) L_limit[i][3] = L_limit[i + vehTotraj_projIndex_][3];
-      else L_limit[i][3] = 0;
     }
   }
 
@@ -200,33 +197,30 @@ void SmoLine::generate_convex_space()
   {
     if(ObsProj::All_obstacle[i].obs_flag == false) continue;
 
-    double obs_s_min = ObsProj::All_obstacle[i].s_set - ObsProj::All_obstacle[i].length;
-    double obs_s_max = ObsProj::All_obstacle[i].s_set + ObsProj::All_obstacle[i].length;
+    double obs_s_min = ObsProj::All_obstacle[i].s_set - ObsProj::All_obstacle[i].length/2;
+    double obs_s_max = ObsProj::All_obstacle[i].s_set + ObsProj::All_obstacle[i].length/2;
 
-    int16_t start_index = FindNearIndex(obs_s_min);
-    int16_t end_index = FindNearIndex(obs_s_max);
-    int16_t centre_index = FindNearIndex(ObsProj::All_obstacle[i].s_set);
-    if(centre_index < 0) centre_index = 0;
+    int16_t start_index = FindObjIndex(obs_s_min, MINPOINT);
+    int16_t end_index = FindObjIndex(obs_s_max, MAXPOINT);
+    int16_t centre_index = FindObjIndex(ObsProj::All_obstacle[i].s_set, MIDPOINT);
+    if(centre_index == LINEBACK) centre_index = 0;
+    else if(centre_index == LINEFRONT) centre_index = arraysize-1;
 
-    if(start_index == -1 || start_index - plan_startIndex > arraysize) continue;//障碍物超出界限
-    else if(end_index == -2 || end_index < plan_startIndex) continue;//障碍物在车后面
+    if(start_index == LINEFRONT) continue;//障碍物超出界限
+    else if(end_index == LINEBACK) continue;//障碍物在车后面
     else
     {
-      if(start_index <= plan_startIndex) //表示障碍物一部分在车后面，一部分在前面
+      if(start_index == LINEBACK) //表示障碍物一部分在车后面，一部分在前面
       {
-        start_index = 0; end_index = end_index - plan_startIndex;
-        if(end_index > arraysize) end_index = arraysize;
+        start_index = 0;
+        if(end_index == LINEFRONT) end_index = arraysize;//障碍物超长，超过了整个规划的范围
       }
-      else if(arraysize + plan_startIndex <= end_index)  //表示障碍物一部分超出二次规划范围，一部分在范围内
+      else if(end_index == LINEFRONT)  //表示障碍物一部分超出二次规划范围，一部分在范围内
       {
-        end_index = arraysize; start_index = start_index - plan_startIndex;
-      }
-      else  //整个障碍物都在二次规划范围内
-      {
-        start_index = start_index - plan_startIndex; end_index = end_index - plan_startIndex;
+        end_index = arraysize;
       }
 
-      if(dynamic_frenet[centre_index].l > ObsProj::All_obstacle[i].l_set)  //动态规划向左绕
+      if(L_limit[centre_index][3] > ObsProj::All_obstacle[i].l_set)  //动态规划向左绕
       {
         for(int16_t j = start_index; j < end_index; j++)
         {
@@ -248,11 +242,36 @@ void SmoLine::generate_convex_space()
 
 
 
+/*计算障碍物在动态规划路径上最近的点坐标
+  输入：  s_set           投影到FL坐标系的s
+  输出：  index           投影点
+  错误代码：LINEFRONT超出规划范围。LINEBACK规划后面
+*/
+int16_t SmoLine::FindObjIndex(const double s_set, objpoint OBJPOINT)
+{
+  int16_t index = 0;
+
+  if(L_limit[0][0] > s_set) return LINEBACK;    //表示在后面
+  else if(L_limit[arraysize-1][0] <= s_set) return LINEFRONT; //表示超出界限
+  else
+  {
+    for(u_int16_t i = 0; ; i++)
+    {
+      if(L_limit[i][0] <= s_set) index++;
+      else break;
+    }
+
+    if(OBJPOINT == MINPOINT) return index-1;
+    else if(OBJPOINT == MAXPOINT) return index;
+    else if(OBJPOINT == MIDPOINT) return index;
+  }
+}
+
 /*计算在动态规划路径上最近的点坐标
   输入：  s_set           投影到FL坐标系的s
   输出：  index           投影点
 */
-int16_t SmoLine::FindNearIndex(double s_set)
+int16_t SmoLine::FindNearIndex(const double s_set)
 {
   int16_t index = 0;
 

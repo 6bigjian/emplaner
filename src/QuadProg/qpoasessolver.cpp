@@ -33,7 +33,7 @@ void SmoLine::qpOASES_init()
   qpOASES_XYinit();
 
   clock_t endTime = clock();
-  ROS_WARN("qpOASES init time is: %f ms",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
+  ROS_WARN("qpOASES init time is: %f ms\r\n",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
 }
 
 void SmoLine::qpOASES_burn()
@@ -51,7 +51,7 @@ void SmoLine::qpOASES_solver()
   qpOASES_XYsolver();
 
   clock_t endTime = clock();
-  ROS_WARN("hotstart time is: %f ms",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
+  // ROS_WARN("hotstart time is: %f ms\r\n",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
 }
 
 
@@ -145,13 +145,47 @@ void SmoLine::qpOASES_SLinit()
 
 void SmoLine::qpOASES_SLburn()
 {
-  delete[] H_SL_f;
-  delete[] f_SL_f;
-  delete[] A_SL_f;
-  delete[] lbA_SL_f;
-  delete[] ubA_SL_f;
-  delete[] lb_SL_f;
-  delete[] ub_SL_f;
+  if(H_SL_f != NULL)
+  {
+    delete[] H_SL_f;
+    H_SL_f = NULL;
+  }
+  
+  if(f_SL_f != NULL)
+  {
+    delete[] f_SL_f;
+    f_SL_f = NULL;
+  }
+
+  if(A_SL_f != NULL)
+  {
+    delete[] A_SL_f;
+    A_SL_f = NULL;
+  }
+
+  if(lbA_SL_f != NULL)
+  {
+    delete[] lbA_SL_f;
+    lbA_SL_f = NULL;
+  }
+
+  if(ubA_SL_f != NULL)
+  {
+    delete[] ubA_SL_f;
+    ubA_SL_f = NULL;
+  }
+
+  if(lb_SL_f != NULL)
+  {
+    delete[] lb_SL_f;
+    lb_SL_f = NULL;
+  }
+
+  if(ub_SL_f != NULL)
+  {
+    delete[] ub_SL_f;
+    ub_SL_f = NULL;
+  }
 }
 
 void SmoLine::qpOASES_SLsolver()
@@ -274,9 +308,6 @@ void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
 
      修改暂时只需要（2n-2） 个等式约束，不等式约束，用上下界简化约束
   */
-  // real_t A[(2*pointsize - 2)*(3*pointsize) + (4*pointsize)*(3*pointsize)];
-  // for(u_int16_t i = 0; i < (2*pointsize - 2)*(3*pointsize) + (4*pointsize)*(3*pointsize); i++)
-  //   A[i] = 0.0;
   qpOASES::real_t A[(2*pointsize - 2)*(3*pointsize)];
   for(u_int16_t i = 0; i < (2*pointsize - 2)*(3*pointsize); i++)
     A[i] = 0.0;
@@ -292,48 +323,12 @@ void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
       A[(2*i + 1)*(3*pointsize) + (3*i + j)] = Aeq_sub(1, j);
     }
 
-  // Eigen::MatrixXd A_sub(4, 3);//生成不等式矩阵，生成A_sub
-  // A_sub << 1,  this->vehicleLength/2,  0,
-  //          1,  this->vehicleLength/2,  0,
-  //          1, -this->vehicleLength/2,  0,
-  //          1, -this->vehicleLength/2,  0;
-  
-  // for(uint16_t i = 0; i < pointsize; i++) //循环导入不等式矩阵
-  //   for(uint16_t j = 0; j < 4; j++)
-  //   {
-  //     A[(2*pointsize - 2)*(3*pointsize) + (4*i + j)*(3*pointsize) + (3*i + 0)] = A_sub(j, 0);
-  //     A[(2*pointsize - 2)*(3*pointsize) + (4*i + j)*(3*pointsize) + (3*i + 1)] = A_sub(j, 1);
-  //   }
-  
-  // real_t lbA[(2*pointsize - 2) + (4*pointsize)];//生成约束下边界
-  // real_t ubA[(2*pointsize - 2) + (4*pointsize)];//生成约束上边界
   qpOASES::real_t lbA[2*pointsize - 2];
   qpOASES::real_t ubA[2*pointsize - 2];//生成约束上边界
   for(uint16_t i = 0; i < (2*pointsize - 2); i++) //生成等式约束
     ubA[i] = lbA[i] = 0.0;
 
 
-  // int maxIndex;
-  // int minIndex;
-  // for(uint16_t i = 0; i < pointsize; i++)//生成不等式约束下边界
-  // {
-  //   maxIndex = i+1; if(maxIndex >= pointsize) maxIndex = pointsize-1;
-  //   minIndex = i-1; if(minIndex <= 0) minIndex = 0;
-  //   lbA[(2*pointsize - 2) + (4*i + 0)] =-this->vehicleWidth/2 + this->L_limit[maxIndex][2];
-  //   lbA[(2*pointsize - 2) + (4*i + 1)] =+this->vehicleWidth/2 + this->L_limit[maxIndex][2];
-  //   lbA[(2*pointsize - 2) + (4*i + 2)] =-this->vehicleWidth/2 + this->L_limit[minIndex][2];
-  //   lbA[(2*pointsize - 2) + (4*i + 3)] =+this->vehicleWidth/2 + this->L_limit[minIndex][2];
-  // }
-
-  // for(uint16_t i = 0; i < pointsize; i++)//生成不等式约束上边界
-  // {
-  //   maxIndex = i+1; if(maxIndex >= pointsize) maxIndex = pointsize-1;
-  //   minIndex = i-1; if(minIndex <= 0) minIndex = 0;
-  //   ubA[(2*pointsize - 2) + (4*i + 0)] =-this->vehicleWidth/2 + this->L_limit[maxIndex][1];
-  //   ubA[(2*pointsize - 2) + (4*i + 1)] =+this->vehicleWidth/2 + this->L_limit[maxIndex][1];
-  //   ubA[(2*pointsize - 2) + (4*i + 2)] =-this->vehicleWidth/2 + this->L_limit[minIndex][1];
-  //   ubA[(2*pointsize - 2) + (4*i + 3)] =+this->vehicleWidth/2 + this->L_limit[minIndex][1];
-  // }
   /*****************************************************************/
 
   /*生成x的上下边界lb,ub*/
@@ -461,13 +456,47 @@ void SmoLine::qpOASES_XYinit()
 
 void SmoLine::qpOASES_XYburn()
 {
-  delete[] H_XY_f;
-  delete[] f_XY_f;
-  // delete[] A_XY_f;
-  // delete[] lbA_XY_f;
-  // delete[] ubA_XY_f;
-  // delete[] lb_XY_f;
-  // delete[] ub_XY_f;
+  if(H_XY_f != NULL)
+  {
+    delete[] H_XY_f;
+    H_XY_f = NULL;
+  }
+  
+  if(f_XY_f != NULL)
+  {
+    delete[] f_XY_f;
+    f_XY_f = NULL;
+  }
+
+  if(A_XY_f != NULL)
+  {
+    delete[] A_XY_f;
+    A_XY_f = NULL;
+  }
+
+  if(lbA_XY_f != NULL)
+  {
+    delete[] lbA_XY_f;
+    lbA_XY_f = NULL;
+  }
+
+  if(ubA_XY_f != NULL)
+  {
+    delete[] ubA_XY_f;
+    ubA_XY_f = NULL;
+  }
+
+  if(lb_XY_f != NULL)
+  {
+    delete[] lb_XY_f;
+    lb_XY_f = NULL;
+  }
+
+  if(ub_XY_f != NULL)
+  {
+    delete[] ub_XY_f;
+    ub_XY_f = NULL;
+  }
 }
 
 

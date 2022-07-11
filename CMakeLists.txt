@@ -36,9 +36,6 @@ src/control/verhic_control.cpp
 src/obstacle/obstacle.cpp
 
 src/QuadProg/smooth.cpp
-src/QuadProg/Array.cpp
-src/QuadProg/QuadProg++.cpp
-src/QuadProg/QP++solver.cpp
 src/QuadProg/qpoasessolver.cpp
 )
 

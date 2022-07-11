@@ -98,7 +98,7 @@ Dynamic_Plan::~Dynamic_Plan()
 
 void Dynamic_Plan::dynamic_thread_worker()
 {
-  ros::Rate loop_rate(10);
+  ros::Rate loop_rate(4);//变为250ms动态规划一次
 
   while(ros::ok())
   {
@@ -106,7 +106,10 @@ void Dynamic_Plan::dynamic_thread_worker()
 
     global_date::my_mutex.lock();
     this->gloLine_build_ = global_date::gloLine_build_;
-    this->retraj = global_date::retraj_flag_;
+
+    if(this->savetrajflag_ == true) this->retraj = global_date::retraj_flag_;
+    else this->retraj = true;
+
     global_date::my_mutex.unlock();
 
     if(this->gloLine_build_ == true)
@@ -137,6 +140,7 @@ void Dynamic_Plan::dynamic_thread_worker()
       {
         this->obs_.Set_Obstacle();
         Generate_Dynamic_Path(New_car_pose, 2);
+        clock_t endTime = clock();
       }
 
       global_date::my_mutex.lock();
@@ -301,22 +305,27 @@ void Dynamic_Plan::Generate_Dynamic_Path(const geometry_msgs::Pose& car_pose ,co
     //将plan_start_pose转化成弗兰纳坐标系plan_start_mags
     plan_start_mags = Cartesian2Frenet(plan_start_pose,reference_path,velocity);
 
-    dynamic_path.clear_data();
-    this->dynamic_frenet_.clear();
-
     if(plan_goal_mags.s < reference_path.s.back())
     {
       this->closeGoal = true;
-      goal_dynamic_planning(plan_start_mags, plan_goal_mags);
+
       if(this->dynamic_frenet_.size()>20)
-      {
         this->plan_start_mags = this->dynamic_frenet_[10-1];
-      }
+          
+      dynamic_path.clear_data();
+      this->dynamic_frenet_.clear();
+
+      goal_dynamic_planning(plan_start_mags, plan_goal_mags);
     }
     else
     {
+      dynamic_path.clear_data();
+      this->dynamic_frenet_.clear();
+      
       dynamic_planning(plan_start_mags,this->dyCol,this->dyRow,this->dySimple_s,this->dySimple_l);
-      this->plan_start_mags = this->dynamic_frenet_[20-1];
+
+      if(this->savetrajflag_ == true)
+        this->plan_start_mags = this->dynamic_frenet_[20-1];
     }
   }
   else

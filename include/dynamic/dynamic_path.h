@@ -68,6 +68,7 @@ private:
   bool closeGoal = false; //动态规划靠近终点
 
   bool retraj = true;
+  bool savetrajflag_ = false;//是否保存一部分动态规划规矩，来缩短规划时间
 
   u_int16_t dyCol = 8;
   u_int16_t dyRow = 7;    //动态规划的行数,必须位奇数
