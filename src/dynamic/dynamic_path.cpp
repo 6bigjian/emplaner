@@ -303,26 +303,30 @@ void Dynamic_Plan::Generate_Dynamic_Path(const geometry_msgs::Pose& car_pose ,co
   { //重新规划轨迹
     Calc_Plan_Start_Point(pre_path,velocity,car_pose,plan_start_pose);
     //将plan_start_pose转化成弗兰纳坐标系plan_start_mags
-    plan_start_mags = Cartesian2Frenet(plan_start_pose,reference_path,velocity);
+    this->plan_start_mags = Cartesian2Frenet(plan_start_pose,reference_path,velocity);
 
     if(plan_goal_mags.s < reference_path.s.back())
     {
       this->closeGoal = true;
+      
+      if(abs(plan_goal_mags.s - plan_start_mags.s) <= this->dySimple_s) goto skipretraj;
 
-      if(this->dynamic_frenet_.size()>20)
-        this->plan_start_mags = this->dynamic_frenet_[10-1];
-          
       dynamic_path.clear_data();
       this->dynamic_frenet_.clear();
 
-      goal_dynamic_planning(plan_start_mags, plan_goal_mags);
+      goal_dynamic_planning(this->plan_start_mags, plan_goal_mags);
+
+skipretraj:
+      if(this->savetrajflag_ == true)
+        if(this->dynamic_frenet_.size()>20)
+          this->plan_start_mags = this->dynamic_frenet_[10-1];
     }
     else
     {
       dynamic_path.clear_data();
       this->dynamic_frenet_.clear();
       
-      dynamic_planning(plan_start_mags,this->dyCol,this->dyRow,this->dySimple_s,this->dySimple_l);
+      dynamic_planning(this->plan_start_mags,this->dyCol,this->dyRow,this->dySimple_s,this->dySimple_l);
 
       if(this->savetrajflag_ == true)
         this->plan_start_mags = this->dynamic_frenet_[20-1];
@@ -343,12 +347,9 @@ void Dynamic_Plan::Generate_Dynamic_Path(const geometry_msgs::Pose& car_pose ,co
        if(plan_goal_mags.s < reference_path.s.back())
        {
          this->closeGoal = true;
-        //  cout << "true" <<endl;
          for(int16_t i = 10; plan_start_mags.s > pre_path.s[i]; i++)
          {
            this->dynamic_frenet_.push_back(predy_frenet[i]);
-            // dynamic_path.referenceline.poses.push_back(pre_path.referenceline.poses[i]);
-            // dynamic_path.s.push_back(pre_path.s[i]);
          }
          goal_dynamic_planning(plan_start_mags, plan_goal_mags);
          if(this->dynamic_frenet_.size()>30)
@@ -361,8 +362,6 @@ void Dynamic_Plan::Generate_Dynamic_Path(const geometry_msgs::Pose& car_pose ,co
           for(int16_t i = 10; i < 20; i++)
           {
             this->dynamic_frenet_.push_back(predy_frenet[i]);
-            // dynamic_path.referenceline.poses.push_back(pre_path.referenceline.poses[i]);
-            // dynamic_path.s.push_back(pre_path.s[i]);
           }
 
           dynamic_planning(this->plan_start_mags, this->dyCol-1,this->dyRow,this->dySimple_s,this->dySimple_l);
@@ -370,7 +369,6 @@ void Dynamic_Plan::Generate_Dynamic_Path(const geometry_msgs::Pose& car_pose ,co
        }
     }
   }
-
 }
 
 

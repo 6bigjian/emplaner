@@ -28,13 +28,14 @@ public:
   void odom_call_back(const nav_msgs::Odometry& odom);
   void GPSToMGRS(Eigen::Vector3d& gps, Eigen::Vector3d& mgrs);
   void CurGPSPtCallBack(const sleipnir_msgs::sensorgps::ConstPtr& msg);
+  void goal_pose_call_back(const geometry_msgs::PoseStamped::ConstPtr& msg);
 
   void sml_thread_worker();
   void generate_convex_space();
   int16_t FindNearIndex(const double s_set);
   int16_t FindObjIndex(const double s_set, objpoint OBJPOINT);
   void Frenet_trans_Cartesian();
-  void Cartesian2Frenet();
+  Dynamic_planning::Frenet_mags Cartesian2Frenet(geometry_msgs::Pose& match_pose);
   
   bool Calc_Plan_Start_Point();
   void calc_traj_theta();
@@ -43,7 +44,7 @@ public:
   void qpOASES_init();
   void qpOASES_burn();
   void qpOASES_solver();
-  void qpOASES_solver(const uint16_t pointsize);
+  void qpOASES_solver(uint16_t& pointsize);
 
   void qpOASES_SLinit();
   void qpOASES_SLburn();
@@ -77,7 +78,7 @@ private:
   double w_cost_ddl = 60;
   double w_cost_centre = 0.2;
 
-  double w_cost_smooth = 10.0;             //平滑代价
+  double w_cost_smooth = 50.0;             //平滑代价
   double w_cost_length = 0.1;             //长度代价
   double w_cost_ref = 1.0;                //相似代价
 
@@ -98,12 +99,16 @@ private:
   nav_msgs::Path  trajline_point;                //最终平滑曲线
   std::vector<double> traj_theta;               //轨迹的theta
 
-  geometry_msgs::Pose New_car_pose;
+  geometry_msgs::Pose New_car_pose; //当前车辆位置
+  geometry_msgs::Pose goal_pose;   //终点位置坐标
   Dynamic_planning::Frenet_mags plan_start_mags;//frenet坐标系下，规划起点信息
+  Dynamic_planning::Frenet_mags plan_goal_mags;//frenet坐标系下，规划起点信息
 
   boost::thread* generate_sml_thread_;
 
   ros::Subscriber odom_sub_;
+  ros::Subscriber goal_pose_sub_;
   ros::Publisher marker_pub_;
   ros::Publisher trajline_pub_;
+
 };

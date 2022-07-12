@@ -51,18 +51,25 @@ void SmoLine::qpOASES_solver()
   qpOASES_XYsolver();
 
   clock_t endTime = clock();
-  // ROS_WARN("hotstart time is: %f ms\r\n",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
+  ROS_WARN("hotstart time is: %f ms\r\n",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
 }
 
 
 /*所求的点不是全满，利用qpOASES求解器，求解二次规划*/
-void SmoLine::qpOASES_solver(const uint16_t pointsize)
+void SmoLine::qpOASES_solver(uint16_t& pointsize)
 {
   clock_t startTime = clock();
-  qpOASES_SLsolver(pointsize);
+  pointsize++;
+  if(pointsize >= 10)
+  {
+    plan_goal_mags = Cartesian2Frenet(goal_pose);//计算终点信息
+    qpOASES_SLsolver(pointsize);
+    qpOASES_XYsolver(pointsize);
+  }
+
   clock_t endTime = clock();
 
-  ROS_WARN("time is: %f ms",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
+  ROS_WARN("init time is: %f ms",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
 }
 
 
@@ -193,15 +200,16 @@ void SmoLine::qpOASES_SLsolver()
   for(int16_t i = 0; i < arrayCapacity; i++)
   {
     f_SL_f[3*i + 0] = -2 * this->w_cost_centre * (L_limit[i][1] + L_limit[i][2])/2;
-    if((L_limit[i][1] - L_limit[i][2]) >= 0.4 * this->w_cost_centre)      //宽度占比 0.8~1.0时，中线权重
+
+    if     ((L_limit[i][1] - L_limit[i][2]) >= 0.8 * 2 * this->borderLimit) //宽度占比 0.8~1.0时，中线权重
       f_SL_f[3*i + 0] *= 1.0;
-    else if((L_limit[i][1] - L_limit[i][2]) >= 0.3 * this->w_cost_centre) //宽度占比 0.6~0.8时，中线权重
+    else if((L_limit[i][1] - L_limit[i][2]) >= 0.6 * 2 * this->borderLimit) //宽度占比 0.6~0.8时，中线权重
       f_SL_f[3*i + 0] *= 2.0;
-    else if((L_limit[i][1] - L_limit[i][2]) >= 0.2 * this->w_cost_centre) //宽度占比 0.4~0.6时，中线权重
+    else if((L_limit[i][1] - L_limit[i][2]) >= 0.4 * 2 * this->borderLimit) //宽度占比 0.4~0.6时，中线权重
       f_SL_f[3*i + 0] *= 3.0;
-    else if((L_limit[i][1] - L_limit[i][2]) >= 0.1 * this->w_cost_centre) //宽度占比 0.2~0.4时，中线权重
+    else if((L_limit[i][1] - L_limit[i][2]) >= 0.2 * 2 * this->borderLimit) //宽度占比 0.2~0.4时，中线权重
       f_SL_f[3*i + 0] *= 4.0;
-    else if((L_limit[i][1] - L_limit[i][2]) >= 0.0 * this->w_cost_centre) //宽度占比 0.0~0.2时，中线权重
+    else if((L_limit[i][1] - L_limit[i][2]) >= 0.0 * 2 * this->borderLimit) //宽度占比 0.0~0.2时，中线权重
       f_SL_f[3*i + 0] *= 5.0;
 
     f_SL_f[3*i + 1] = 0.0;
@@ -240,7 +248,7 @@ void SmoLine::qpOASES_SLsolver()
   
   if(smoresult == qpOASES::SUCCESSFUL_RETURN)
   {
-    ROS_WARN("SUCCESSFUL hotstart,nWSR is:%d",nWSR);
+    // ROS_WARN("SUCCESSFUL hotstart,nWSR is:%d",nWSR);
     qpOASES::real_t xOpt[3*arrayCapacity];
     sl_fulloasesslover.getPrimalSolution(xOpt);
 
@@ -269,6 +277,10 @@ void SmoLine::qpOASES_SLsolver()
 
 void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
 {
+  L_limit[pointsize-1][0] = plan_goal_mags.s;//保存终点s
+  L_limit[pointsize-1][1] = borderLimit;
+  L_limit[pointsize-1][2] =-borderLimit;
+
   /*生成二次规划的代价矩阵 0.5x'Hx + x'f*/
   qpOASES::real_t H[3*pointsize * 3*pointsize];
   for(uint16_t i = 0; i < 3*pointsize * 3*pointsize; i++)
@@ -284,21 +296,29 @@ void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
   qpOASES::real_t f[3*pointsize * 1];
   for(int16_t i = 0; i < pointsize; i++)
   {
-    f_SL_f[3*i + 0] = -2 * this->w_cost_centre * (L_limit[i][1] + L_limit[i][2])/2;
-    if((L_limit[i][1] - L_limit[i][2]) >= 0.4 * this->w_cost_centre)      //宽度占比 0.8~1.0时，中线权重
-      f_SL_f[3*i + 0] *= 1.0;
-    else if((L_limit[i][1] - L_limit[i][2]) >= 0.3 * this->w_cost_centre) //宽度占比 0.6~0.8时，中线权重
-      f_SL_f[3*i + 0] *= 2.0;
-    else if((L_limit[i][1] - L_limit[i][2]) >= 0.2 * this->w_cost_centre) //宽度占比 0.4~0.6时，中线权重
-      f_SL_f[3*i + 0] *= 3.0;
-    else if((L_limit[i][1] - L_limit[i][2]) >= 0.1 * this->w_cost_centre) //宽度占比 0.2~0.4时，中线权重
-      f_SL_f[3*i + 0] *= 4.0;
-    else if((L_limit[i][1] - L_limit[i][2]) >= 0.0 * this->w_cost_centre) //宽度占比 0.0~0.2时，中线权重
-      f_SL_f[3*i + 0] *= 5.0;
+    f[3*i + 0] = -2 * this->w_cost_centre * (L_limit[i][1] + L_limit[i][2])/2;
+
+    if     ((L_limit[i][1] - L_limit[i][2]) >= 0.8 * 2 * this->borderLimit) //宽度占比 0.8~1.0时，中线权重
+      f[3*i + 0] *= 1.0;
+    else if((L_limit[i][1] - L_limit[i][2]) >= 0.6 * 2 * this->borderLimit) //宽度占比 0.6~0.8时，中线权重
+      f[3*i + 0] *= 2.0;
+    else if((L_limit[i][1] - L_limit[i][2]) >= 0.4 * 2 * this->borderLimit) //宽度占比 0.4~0.6时，中线权重
+      f[3*i + 0] *= 3.0;
+    else if((L_limit[i][1] - L_limit[i][2]) >= 0.2 * 2 * this->borderLimit) //宽度占比 0.2~0.4时，中线权重
+      f[3*i + 0] *= 4.0;
+    else if((L_limit[i][1] - L_limit[i][2]) >= 0.0 * 2 * this->borderLimit) //宽度占比 0.0~0.2时，中线权重
+      f[3*i + 0] *= 5.0;
 
     f[3*i + 1] = 0.0;
     f[3*i + 2] = 0.0;
   }
+
+  //给最后的终点加权重，看看能不能减少时间
+    // H[(3*(pointsize-1)+0)*3*pointsize + (3*(pointsize-1)+0)] += 2*10000;
+    // H[(3*(pointsize-1)+1)*3*pointsize + (3*(pointsize-1)+1)] += 2*10000;
+
+    // f[3*(pointsize-1) + 0] += -2 * plan_goal_mags.l * 10000;
+    // f[3*(pointsize-1) + 1] += -2 * plan_goal_mags.dl* 10000;
     
   /************************************************************************************/
 
@@ -316,22 +336,30 @@ void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
   Aeq_sub << 1,  ds,     ds*ds/3,  -1,   0,    ds*ds/6,
              0,  1,      ds/2,     0,    -1,   ds/2;
 
-  for(uint16_t i = 0; i < pointsize - 1; i++) //循环导入等式矩阵
+  for(uint16_t i = 0; i < pointsize - 2; i++) //循环导入等式矩阵
     for(uint16_t j = 0; j < 6; j++)
     {
       A[(2*i + 0)*(3*pointsize) + (3*i + j)] = Aeq_sub(0, j);
       A[(2*i + 1)*(3*pointsize) + (3*i + j)] = Aeq_sub(1, j);
     }
 
+  double end_ds = L_limit[pointsize-1][0] - L_limit[pointsize-2][0];
+  Aeq_sub << 1,  end_ds,  end_ds*end_ds/3,  -1,   0,    end_ds*end_ds/6,
+             0,  1,       end_ds/2,          0,  -1,    end_ds/2;
+
+  for(uint16_t j = 0; j < 6; j++)
+  {
+    A[(2*(pointsize - 2) + 0)*(3*pointsize) + (3*(pointsize - 2) + j)] = Aeq_sub(0, j);
+    A[(2*(pointsize - 2) + 1)*(3*pointsize) + (3*(pointsize - 2) + j)] = Aeq_sub(1, j);
+  }
+
   qpOASES::real_t lbA[2*pointsize - 2];
   qpOASES::real_t ubA[2*pointsize - 2];//生成约束上边界
   for(uint16_t i = 0; i < (2*pointsize - 2); i++) //生成等式约束
     ubA[i] = lbA[i] = 0.0;
-
-
   /*****************************************************************/
 
-  /*生成x的上下边界lb,ub*/
+  /**************生成x的上下边界lb,ub*************/
   qpOASES::real_t lb[3*pointsize];
   qpOASES::real_t ub[3*pointsize];
   for(uint16_t i = 0; i < pointsize; i++)
@@ -347,15 +375,37 @@ void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
 
   if(this->retraj == false)
   {
-    for(uint16_t i = 0; i < retaintraj_num-vehTotraj_projIndex_; i++)
-      ub[3*i] = lb[3*i] = L_limit[i][3];
+    if(retaintraj_num-vehTotraj_projIndex_ > 0)
+    {
+      ub[0] = lb[0] = L_limit[0][3];
+
+      for(uint16_t i = 1; i < retaintraj_num-vehTotraj_projIndex_; i++)
+      {
+        ub[3*i] = L_limit[i][3] + i*0.1;
+        lb[3*i] = L_limit[i][3] - i*0.1;
+      }
+    }
   }
   else
   {
-      ub[0] = lb[0] = plan_start_mags.l;
-      ub[1] = lb[1] = plan_start_mags.dl;
-      ub[2] = lb[2] = plan_start_mags.ddl;
+    ub[0] = lb[0] = plan_start_mags.l;
+    ub[1] = lb[1] = plan_start_mags.dl;
+    ub[2] = lb[2] = plan_start_mags.ddl;
   }
+
+  ub[3*pointsize - 3] = plan_goal_mags.l + 0.1;
+  lb[3*pointsize - 3] = plan_goal_mags.l - 0.1;
+  ub[3*pointsize - 2] = plan_goal_mags.dl+ 0.5;
+  lb[3*pointsize - 2] = plan_goal_mags.dl- 0.5;
+  ub[3*pointsize - 1] = ddlLimit;
+  lb[3*pointsize - 1] =-ddlLimit;
+  // ub[3*pointsize - 3] = borderLimit;
+  // lb[3*pointsize - 3] =-borderLimit;
+  // ub[3*pointsize - 2] = dlLimit;
+  // lb[3*pointsize - 2] =-dlLimit;
+  // ub[3*pointsize - 1] = ddlLimit;
+  // lb[3*pointsize - 1] =-ddlLimit;
+  /**********************************************/
 
   qpOASES::QProblem qpoasesslove(3*pointsize, (2*pointsize - 2));
   qpoasesslove.setPrintLevel(qpOASES::PL_NONE);
@@ -363,10 +413,10 @@ void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
   qpOASES::int_t nWSR = 1000;
   qpOASES::returnValue smoresult;
   smoresult = qpoasesslove.init(H,f,A,lb,ub,lbA,ubA,nWSR);
-  
+
   if(smoresult == qpOASES::SUCCESSFUL_RETURN)
   {
-    ROS_WARN("SUCCESSFUL RETURN,nWSR is:%d",nWSR);
+    ROS_WARN("SL RETURN,nWSR is:%d",nWSR);
     qpOASES::real_t xOpt[3*pointsize];
     qpoasesslove.getPrimalSolution(xOpt);
 
@@ -392,6 +442,7 @@ void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
     }
   }
 }
+
 
 void SmoLine::qpOASES_XYinit()
 {
@@ -439,6 +490,9 @@ void SmoLine::qpOASES_XYinit()
   //     H_XY_f[(2*arrayCapacity)*(2*i + j) + 2*i + 2] += A2(j, 2) * this->w_cost_length;
   //     H_XY_f[(2*arrayCapacity)*(2*i + j) + 2*i + 3] += A2(j, 3) * this->w_cost_length;
   //   }
+
+  lb_XY_f = new qpOASES::real_t[2*arrayCapacity * 1];
+  ub_XY_f = new qpOASES::real_t[2*arrayCapacity * 1];
 
   xy_fulloasesslover.setPrintLevel(qpOASES::PL_NONE);
   qpOASES::int_t nWSR = 1000;
@@ -538,10 +592,111 @@ void SmoLine::qpOASES_XYsolver()
     /********************/
     geometry_msgs::Point p;
 
-    ROS_WARN("SUCCESSFUL hotstart,nWSR is:%d",nWSR);
+    // ROS_WARN("SUCCESSFUL hotstart,nWSR is:%d",nWSR);
     qpOASES::real_t xOpt[2*arrayCapacity];
     xy_fulloasesslover.getPrimalSolution(xOpt);
     for(int16_t i = 0; i < arrayCapacity; i++)
+    {
+      p.x = xOpt[2*i + 0];
+      p.y = xOpt[2*i + 1];
+      peak.points.push_back(p);
+      pose_stamp.pose.position = p;
+      trajline_point.poses.push_back(pose_stamp);
+    }
+    // this->marker_pub_.publish(peak);
+    this->trajline_pub_.publish(trajline_point);
+    calc_traj_theta();
+  }
+}
+
+void SmoLine::qpOASES_XYsolver(const uint16_t pointsize)
+{
+  qpOASES::real_t H[2*pointsize * 2*pointsize];
+  for(uint16_t i = 0; i < 2*pointsize * 2*pointsize; i++) H[i] = 0.0;
+
+  qpOASES::real_t f[2*pointsize * 1];
+  for(uint16_t i = 0; i < 2*pointsize; i++) f[i] = 0.0;
+
+  Eigen::MatrixXd A1(6, 6);//生成平滑代价矩阵
+  A1 << 1,  0, -2,  0,  1,  0,
+        0,  1,  0, -2,  0,  1,
+       -2,  0,  4,  0, -2,  0,
+        0, -2,  0,  4,  0, -2,
+        1,  0, -2,  0,  1,  0,
+        0,  1,  0, -2,  0,  1;
+  for(int16_t i = 0; i < pointsize-2; i++)
+    for(int16_t j = 0; j < 6; j++)
+    {
+      //每3个点(6个参数)作为变量去计算代价；因此每换一个点就需要偏移两行两列
+      //(2*arrayCapacity)*2i 向下偏移2i行；(2*i)是列偏移，向右偏移两列
+      //(2*arrayCapacity)*j是在当前的行偏移下再向下偏移，因为A1有6行，所以需要偏移6次；
+      H[(2*pointsize)*(2*i + j) + 2*i + 0] += A1(j, 0) * 2*this->w_cost_smooth;
+      H[(2*pointsize)*(2*i + j) + 2*i + 1] += A1(j, 1) * 2*this->w_cost_smooth;
+      H[(2*pointsize)*(2*i + j) + 2*i + 2] += A1(j, 2) * 2*this->w_cost_smooth;
+      H[(2*pointsize)*(2*i + j) + 2*i + 3] += A1(j, 3) * 2*this->w_cost_smooth;
+      H[(2*pointsize)*(2*i + j) + 2*i + 4] += A1(j, 4) * 2*this->w_cost_smooth;
+      H[(2*pointsize)*(2*i + j) + 2*i + 5] += A1(j, 5) * 2*this->w_cost_smooth;
+    }
+
+  for(uint16_t i = 0; i < 2*pointsize; i++)//生成相似代价矩阵
+    H[(2*pointsize)*i + i] += 2*this->w_cost_ref;
+  
+  for(uint16_t i = 0; i < pointsize; i++)
+  {
+    f[2*i + 0] = -2 * this->trajline_SLpoint.poses[i].pose.position.x * this->w_cost_ref;
+    f[2*i + 1] = -2 * this->trajline_SLpoint.poses[i].pose.position.y * this->w_cost_ref;
+  }
+
+  qpOASES::real_t lb[2*pointsize * 1];
+  qpOASES::real_t ub[2*pointsize * 1];
+  for(int16_t i = 0; i < pointsize-1; i++)
+  {
+    lb[2*i + 0] = this->trajline_SLpoint.poses[i].pose.position.x - ds;
+    ub[2*i + 0] = this->trajline_SLpoint.poses[i].pose.position.x + ds;
+
+    lb[2*i + 1] = this->trajline_SLpoint.poses[i].pose.position.y - ds;
+    ub[2*i + 1] = this->trajline_SLpoint.poses[i].pose.position.y + ds;
+  }
+  lb[2*pointsize - 1] = ub[2*pointsize - 1] = this->trajline_SLpoint.poses[pointsize - 1].pose.position.y;
+  lb[2*pointsize - 2] = ub[2*pointsize - 2] = this->trajline_SLpoint.poses[pointsize - 1].pose.position.x;
+
+
+  qpOASES::int_t nWSR = 1000;
+  qpOASES::returnValue smoresult;
+  qpOASES::QProblem xy_oasesslover(2*pointsize, 0);
+  xy_oasesslover.setPrintLevel(qpOASES::PL_NONE);
+  smoresult = xy_oasesslover.init(H,f,NULL,lb,ub,NULL,NULL,nWSR);
+
+
+  if(smoresult == qpOASES::SUCCESSFUL_RETURN)
+  {
+    trajline_point.poses.clear();
+    trajline_point.header.frame_id = Frame_id;
+    trajline_point.header.stamp = ros::Time::now();
+    /*显示到rivz的图像*/
+    geometry_msgs::PoseStamped pose_stamp;
+    pose_stamp.header.frame_id = Frame_id;
+    pose_stamp.header.stamp = ros::Time::now();
+
+    visualization_msgs::Marker peak;
+    peak.header.frame_id =  "planning_odom";
+    peak.header.stamp = ros::Time::now();
+    peak.ns = "points_and_line";
+    peak.action = visualization_msgs::Marker::ADD;
+    peak.pose.orientation.w = 1.0;
+    peak.id = 3;
+    peak.type = visualization_msgs::Marker::POINTS;
+    peak.scale.x = 0.1;
+    peak.scale.y = 0.1;
+    peak.color.g = 1.0;
+    peak.color.a = 1.0;
+    /********************/
+    geometry_msgs::Point p;
+
+    ROS_WARN("XY hotstart,nWSR is:%d",nWSR);
+    qpOASES::real_t xOpt[2*pointsize];
+    xy_oasesslover.getPrimalSolution(xOpt);
+    for(int16_t i = 0; i < pointsize; i++)
     {
       p.x = xOpt[2*i + 0];
       p.y = xOpt[2*i + 1];

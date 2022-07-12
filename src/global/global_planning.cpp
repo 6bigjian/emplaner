@@ -53,7 +53,6 @@ void Global_Plan::start_pose_call_back(const geometry_msgs::PoseWithCovarianceSt
 }
 
 
-// 
 /*获取终点
  *获取起点到终点的的原始参考线*/
 void Global_Plan::goal_pose_call_back(const geometry_msgs::PoseStamped::ConstPtr& msg)

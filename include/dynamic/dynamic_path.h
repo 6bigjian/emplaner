@@ -40,7 +40,7 @@ public:
   void Frenet_trans_Cartesian(const std::vector<Dynamic_planning::Frenet_mags>& dynamic_frenet, const Dynamic_planning::Road_mags& referenceline_mags);
 
   double Calc_Neighbour_Cost(const Dynamic_planning::Frenet_mags& plan_start_mags, const Dynamic_planning::Frenet_mags& plan_end_mags, 
-                            Eigen::MatrixXd& coeff, const uint16_t cost_ref = 3, const uint16_t cost_dl = 5, const uint16_t cost_ddl = 20);
+                            Eigen::MatrixXd& coeff, const uint16_t cost_ref = 2, const uint16_t cost_dl = 10, const uint16_t cost_ddl = 100);
 
   void Calc_Quintc_Coeffient(const double start_l, const double start_dl, const double start_ddl,
                             const double end_l, const double end_dl, const double end_ddl,

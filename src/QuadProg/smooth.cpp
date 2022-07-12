@@ -47,6 +47,14 @@ void SmoLine::CurGPSPtCallBack(const sleipnir_msgs::sensorgps::ConstPtr& msg)
   New_car_pose.orientation = tf::createQuaternionMsgFromRollPitchYaw(0, 0, heading);
 }
 
+/*获取终点*/
+void SmoLine::goal_pose_call_back(const geometry_msgs::PoseStamped::ConstPtr& msg)
+{
+  goal_pose.position.x = msg->pose.position.x;
+  goal_pose.position.y = msg->pose.position.y;
+  goal_pose.orientation = msg->pose.orientation;
+}
+
 
 SmoLine::SmoLine()
 {
@@ -68,6 +76,9 @@ SmoLine::SmoLine()
 
   this->marker_pub_ = n_sml.advertise<visualization_msgs::Marker>("smool_marker", 10);
 
+  this->goal_pose_sub_ = 
+    n_sml.subscribe("/move_base_simple/goal", 10, &SmoLine::goal_pose_call_back, this);
+
   this->vehicleWidth = global_date::vehicleWidth;//获取车辆长宽，只读数据无需上锁
   this->vehicleLength = global_date::vehicleLength;
 
@@ -76,9 +87,9 @@ SmoLine::SmoLine()
 
 SmoLine::~SmoLine()
 {
-  #if qpsolver == qpoasessolver
+#if qpsolver == qpoasessolver
   qpOASES_burn();
-  #endif
+#endif
 
   if(generate_sml_thread_ != NULL)
   {
@@ -90,11 +101,11 @@ SmoLine::~SmoLine()
 
 void SmoLine::sml_thread_worker()
 {
-  ros::Rate loop_rate(10);
+  ros::Rate loop_rate(5);
 
-  #if qpsolver == qpoasessolver
+#if qpsolver == qpoasessolver
     qpOASES_init();
-  #endif
+#endif
 
   while(ros::ok())
   {
@@ -119,11 +130,12 @@ void SmoLine::sml_thread_worker()
       global_date::obj_mutex.unlock();
       this->first_sml = false;
 
-      #if (qpsolver == qpoasessolver)
-        if(arraysize == arrayCapacity) qpOASES_solver();
-        else qpOASES_solver(arraysize);
+#if qpsolver == qpoasessolver
+
+      if(arraysize == arrayCapacity) qpOASES_solver();
+      else qpOASES_solver(arraysize);
         
-      #endif
+#endif
 
       global_date::my_mutex.lock();
       global_date::smoLine_build_ = true;
@@ -144,7 +156,7 @@ void SmoLine::generate_convex_space()
   double start_s;
   if(this->retraj == true) //从车辆起点开始规划
   {
-    Cartesian2Frenet();
+    plan_start_mags = Cartesian2Frenet(New_car_pose);
     vehTotraj_projIndex_ = retaintraj_num - 3;//要保留二次规划起点的约束
     //计算当前车辆在全局参考线上的投影坐标s
     int16_t start_index = Global_Plan::Search_Match_Point(New_car_pose.position.x, New_car_pose.position.y, 
@@ -167,6 +179,7 @@ void SmoLine::generate_convex_space()
 
         arraysize = i+1;
       }
+      else break;
     }
   }
   else//保留上一时刻部分轨迹
@@ -190,6 +203,7 @@ void SmoLine::generate_convex_space()
 
         arraysize = i+1;
       }
+      else break;
     }
   }
 
@@ -263,7 +277,7 @@ int16_t SmoLine::FindObjIndex(const double s_set, objpoint OBJPOINT)
 
     if(OBJPOINT == MINPOINT) return index-1;
     else if(OBJPOINT == MAXPOINT) return index;
-    else if(OBJPOINT == MIDPOINT) return index;
+    else return index;
   }
 }
 
@@ -294,19 +308,20 @@ int16_t SmoLine::FindNearIndex(const double s_set)
 
 
 /*计算规划起点的Frenet坐标信息
- *输入：      plan_start_pose           笛卡尔坐标下规划起点信息
+ *输入：      match_pose                笛卡尔坐标下需要转换位置点信息
  *           reference_path            参考线
  *           velocity                  线速度
- *输出：      plan_start_mags           Frenet坐标下规划起点信息
+ *输出：      pose_mags           Frenet坐标下规划起点信息
  */
-void SmoLine::Cartesian2Frenet()
+Dynamic_planning::Frenet_mags SmoLine::Cartesian2Frenet(geometry_msgs::Pose& match_pose)
 {
+  Dynamic_planning::Frenet_mags pose_mags;
   //计算规划起点在参考线上的投影点
-  int16_t match_point_index = Global_Plan::Search_Match_Point(New_car_pose.position.x, New_car_pose.position.y, 
+  int16_t match_point_index = Global_Plan::Search_Match_Point(match_pose.position.x, match_pose.position.y, 
                               reference_path.referenceline, 0, reference_path.referenceline.poses.size() - 1);
   //车到匹配点的误差向量
-  double d_err[2] = {(New_car_pose.position.x - reference_path.referenceline.poses[match_point_index].pose.position.x),
-                     (New_car_pose.position.y - reference_path.referenceline.poses[match_point_index].pose.position.y)};
+  double d_err[2] = {(match_pose.position.x - reference_path.referenceline.poses[match_point_index].pose.position.x),
+                     (match_pose.position.y - reference_path.referenceline.poses[match_point_index].pose.position.y)};
   //匹配点的法向量
   double nor[2] = {-sin(reference_path.theta[match_point_index]), cos(reference_path.theta[match_point_index])};
   //匹配点的切向量
@@ -314,28 +329,41 @@ void SmoLine::Cartesian2Frenet()
   //纵向误差
   double lon_err = d_err[0] * tor[0] + d_err[1] * tor[1];
   //横向误差,l
-  plan_start_mags.l = d_err[0] * nor[0] + d_err[1] * nor[1];
+  pose_mags.l = d_err[0] * nor[0] + d_err[1] * nor[1];
   //纵向距离s
-  plan_start_mags.s = reference_path.s[match_point_index] + lon_err;
+  pose_mags.s = reference_path.s[match_point_index] + lon_err;
   //车辆航向角
-  double yaw = tf2::getYaw(New_car_pose.orientation);
+  double yaw = tf2::getYaw(match_pose.orientation);
   //计算l对时间t的导数 l_dot = v * n_r
-  plan_start_mags.l_dot = (cos(yaw) * nor[0] + sin(yaw) * nor[1]);
+  pose_mags.l_dot = (cos(yaw) * nor[0] + sin(yaw) * nor[1]);
   //计算s对t的导数 s_dot = (v * t_r)/(1 - k_r * l)
-  plan_start_mags.s_dot = (cos(yaw) * tor[0] + sin(yaw) * tor[1]);
-  plan_start_mags.s_dot = plan_start_mags.s_dot / (1 - reference_path.k[match_point_index]*plan_start_mags.l);
+  pose_mags.s_dot = (cos(yaw) * tor[0] + sin(yaw) * tor[1]);
+  pose_mags.s_dot = pose_mags.s_dot / (1 - reference_path.k[match_point_index]*pose_mags.l);
   //计算l对s的导数  dl = l_dot/s_dot;
-  plan_start_mags.dl = 0;
-  if(abs(plan_start_mags.s_dot) > 0.001)
-  plan_start_mags.dl = plan_start_mags.l_dot/plan_start_mags.s_dot;
-  else
-  {
-    plan_start_mags.dl = tan(yaw - reference_path.theta[match_point_index]);
-  }
+  pose_mags.dl = 0;
+  // if(abs(pose_mags.s_dot) > 0.001)
+  pose_mags.dl = pose_mags.l_dot/pose_mags.s_dot;
+  // else
+  // {
+  //   pose_mags.dl = tan(yaw - reference_path.theta[match_point_index]);
+  // }
   //认为车匀速运动，在s上没有加速度
-  plan_start_mags.s_dot2 = 0;
-  plan_start_mags.l_dot2 = 0;
-  plan_start_mags.ddl = 0;
+  pose_mags.s_dot2 = 0;
+  pose_mags.l_dot2 = 0;
+  pose_mags.ddl = 0;
+
+  if(abs(pose_mags.dl - yaw + reference_path.theta[match_point_index])> 20*3.14/180)
+  {
+    ROS_WARN("ERROR");
+    std::cout<< "yaw: "<<yaw<<"\n"<<
+                "ref theta: "<<reference_path.theta[match_point_index]<<"\n"<<
+                "pose_mags.dl: "<< pose_mags.dl<<"\n"<<
+                "pose_mags.l: "<<  pose_mags.l <<"\n"<<
+                "pose_mags.ldot: "<<pose_mags.l_dot<<"\n"<<
+                "pose_mags.s_dot: "<<pose_mags.s_dot<<"\n"<<std::endl;
+  }
+
+  return pose_mags;
 }
 
 
@@ -444,13 +472,10 @@ void SmoLine::Frenet_trans_Cartesian()
 
 fail:
 
-  // calc_traj_theta();
-
   this->marker_pub_.publish(L_max);
   this->marker_pub_.publish(L_min);
   // this->marker_pub_.publish(traj_line);
   // this->marker_pub_.publish(peak);
-  // this->trajline_pub_.publish(trajline_point);
 }
 
 
