@@ -4,6 +4,7 @@
     <!-- 给其他launch的地图文件 -->
     <arg name="lanelet2_map_path" value="/home/big-jian/Sleipnir/data/hdmap/GDUT_2_josm.osm"/>
     <param name="hdmap_file_map" value="$(arg lanelet2_map_path)" />
+    <param name="lon_speed" value="1.0" />
     
     <!-- 仿真标志 -->
     <arg name="is_simulation" value="true"/>

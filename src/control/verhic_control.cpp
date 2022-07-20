@@ -137,9 +137,11 @@ Ver_Ctrl::~Ver_Ctrl()
   }
 }
 
+#define control_frequency   100u
+
 void Ver_Ctrl::ctrl_thread_worker()
 {
-  ros::Rate loop_rate(100);
+  ros::Rate loop_rate(control_frequency);
 
   while(ros::ok())
   {
@@ -187,10 +189,8 @@ void Ver_Ctrl::verhicle_control(const nav_msgs::Path& referenceline, const geome
   double altha = tf2::getYaw(car_pose.orientation) - 
          atan2((referenceline.poses[i].pose.position.y - y), (referenceline.poses[i].pose.position.x - x));
   //纯跟踪法计算偏转角
-  // msg.y =  -atan2(2*L*sin(altha), point_distance) + PIDcontrol(carindex, referenceline, car_pose);
   geometry_msgs::Vector3 msg; 
-  msg.y =  -atan2(2*global_date::vehicleLength*sin(altha), point_distance);
-  
+  msg.y = -altha;
   global_date::my_mutex.lock();
   if(sqrt(pow(car_pose.position.x - goal_pose_.position.x, 2) +
           pow(car_pose.position.y - goal_pose_.position.y, 2)) < 0.5)//抵达终点
@@ -206,12 +206,13 @@ void Ver_Ctrl::verhicle_control(const nav_msgs::Path& referenceline, const geome
   }
   else
   {
-    msg.x = vx;
+    msg.x = referenceline.poses[carindex].pose.orientation.w;
+    // ROS_WARN("VX is :%f",msg.x);
   }
   global_date::my_mutex.unlock();
-
+  //实际跑车打角
   geometry_msgs::Twist T3;
-  T3.angular.z = msg.y;
+  T3.angular.z = -atan2(2*global_date::vehicleLength*sin(altha), point_distance);
   T3.linear.x = msg.x;
 
   if(this->simulation_flag = true) this->control_data_pub_.publish(msg);

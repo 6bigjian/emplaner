@@ -2,6 +2,12 @@
 
 #include"emplaner/head.h"
 
+enum obstacle_strategy{
+    NULLIFY = 0,//不做处理
+    FOLLOW,//跟车
+    OVERTAKE,//超车
+    FORWARD//保持前位
+};
 
 namespace Dynamic_planning {
 class Frenet_mags

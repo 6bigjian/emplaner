@@ -200,7 +200,6 @@ void Hdmap_Build::Generate_Global_Routing(const lanelet::routing::LaneletPath& s
       stores_path_array_.poses.push_back(point_posess);
     }
   }
-
 }
 
 
@@ -267,7 +266,9 @@ void Hdmap_Build::Generate_Original_Referenceline(const geometry_msgs::Pose& sta
     }
   }
 
+  // find_obj_road(start_index, goal_index);
   Insert_Point(start_index, goal_index);
+
   // Smooth_Path_array(start_index, goal_index, stores_path_array_, Original_Path);
 }
 
@@ -278,7 +279,7 @@ void Hdmap_Build::Generate_Original_Referenceline(const geometry_msgs::Pose& sta
           spacing_distance    路径点的最小距离，默认0.5m
  *输出：   referenceline       插值后的参考线
           输出的参考线由小到大并定是   从起点到终点
- ***/
+ */
 void Hdmap_Build::Insert_Point(const int& start_index, const int& end_index,double spacing_distance, bool nearly)
 {
   /***参考线初始化***/
@@ -524,3 +525,60 @@ double Hdmap_Build::Calc_kappa(const geometry_msgs::Pose& point1, const geometry
 //   // marker_pub.publish(points);
 // }
 
+
+
+void Hdmap_Build::find_obj_road(int start_index, int goal_index)
+{
+  /***参考线初始化***/
+  Global_Path_.clear_data();
+  Global_Path_.referenceline.header.frame_id = Frame_id;
+  Global_Path_.referenceline.header.stamp = ros::Time::now();
+  /************/
+
+  geometry_msgs::PoseStamped pose_stamp;
+  pose_stamp.header.frame_id = Frame_id;
+  pose_stamp.header.stamp = ros::Time::now();
+  double theta;
+  double nor[2];
+
+  if(start_index > goal_index)
+  {
+    for(int i = start_index; i >= goal_index; i--)
+    {
+        if(i == start_index)
+          theta = atan2((stores_path_array_.poses[i-1].position.y - stores_path_array_.poses[i].position.y),
+                        (stores_path_array_.poses[i-1].position.x - stores_path_array_.poses[i].position.x));
+        else
+          theta = atan2((stores_path_array_.poses[i].position.y - stores_path_array_.poses[i+1].position.y),
+                        (stores_path_array_.poses[i].position.x - stores_path_array_.poses[i+1].position.x));
+
+        nor[0] = -sin(theta);
+        nor[1] = cos(theta);
+        pose_stamp.pose.position.x = stores_path_array_.poses[i].position.x - nor[0];
+        pose_stamp.pose.position.y = stores_path_array_.poses[i].position.y - nor[1];
+        pose_stamp.pose.position.z = 0;
+        Global_Path_.referenceline.poses.push_back(pose_stamp);
+        std::cout<<"("<<pose_stamp.pose.position.x<<","<<pose_stamp.pose.position.y<<","<<theta<<")"<<std::endl;
+    }
+  }
+  else
+  {
+    for(int i = start_index; i <= start_index; i++)
+    {
+        if(i == start_index)
+          theta = atan2((stores_path_array_.poses[i+1].position.y - stores_path_array_.poses[i].position.y),
+                        (stores_path_array_.poses[i+1].position.x - stores_path_array_.poses[i].position.x));
+        else
+          theta = atan2((stores_path_array_.poses[i].position.y - stores_path_array_.poses[i-1].position.y),
+                        (stores_path_array_.poses[i].position.x - stores_path_array_.poses[i-1].position.x));
+
+        nor[0] = -sin(theta);
+        nor[1] = cos(theta);
+        pose_stamp.pose.position.x = stores_path_array_.poses[i].position.x - nor[0];
+        pose_stamp.pose.position.y = stores_path_array_.poses[i].position.y - nor[1];
+        pose_stamp.pose.position.z = 0;
+        Global_Path_.referenceline.poses.push_back(pose_stamp);
+        std::cout<<"("<<pose_stamp.pose.position.x<<","<<pose_stamp.pose.position.y<<","<<theta<<")"<<std::endl;
+    }
+  }
+}

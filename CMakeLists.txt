@@ -37,6 +37,7 @@ src/obstacle/obstacle.cpp
 
 src/QuadProg/smooth.cpp
 src/QuadProg/qpoasessolver.cpp
+src/QuadProg/generateSTgraph.cpp
 )
 
 SET(CMAKE_BUILD_TYPE DEBUG) 

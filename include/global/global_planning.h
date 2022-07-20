@@ -34,7 +34,6 @@ private:
   ros::Subscriber goal_pose_sub_;
 
   ros::Publisher referenceline_pub_;
-  ros::Publisher marker_pub_;
 };
 
 

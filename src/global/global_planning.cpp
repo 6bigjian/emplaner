@@ -1,40 +1,5 @@
 #include "global/global_planning.h"
-
 #include "dynamic/dynamic_path.h"
-// #include "emplaner/obstacle.h"
-
-Global_Plan::~Global_Plan()
-{
-  if(generate_glo_thread_ != NULL)
-  {
-    delete generate_glo_thread_;
-    generate_glo_thread_ = NULL;
-  }
-}
-
-Global_Plan::Global_Plan()
-{
-    ros::NodeHandle n_gp;
-    n_gp.param("simulation_model", this->simulation_flag, true);
-
-    if(simulation_flag == true)
-    {
-      this->start_pose_sub_ = n_gp.subscribe("/initialpose", 10, &Global_Plan::start_pose_call_back, this);
-    }
-    else
-    {
-      this->start_pose_sub_ = 
-        n_gp.subscribe("/localization/fusion_position", 10, &Global_Plan::CurGPSPtCallBack, this);
-    }
-
-    this->goal_pose_sub_ = 
-      n_gp.subscribe("/move_base_simple/goal", 10, &Global_Plan::goal_pose_call_back, this);
-    this->referenceline_pub_ = 
-      n_gp.advertise<nav_msgs::Path>("ReferenceLine_CenterPoint", 10);
-
-    generate_glo_thread_ = new boost::thread(boost::bind(&Global_Plan::global_thread_worker, this));
-}
-
 
 //获取起点
 void Global_Plan::start_pose_call_back(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
@@ -113,6 +78,40 @@ void Global_Plan::CurGPSPtCallBack(const sleipnir_msgs::sensorgps::ConstPtr& msg
   start_pose_.position.y = gp_start_pt_(1) - hdmap_build_.origin_point_(1);
   start_pose_.orientation = tf::createQuaternionMsgFromRollPitchYaw(0, 0, heading);
 }
+
+
+Global_Plan::~Global_Plan()
+{
+  if(generate_glo_thread_ != NULL)
+  {
+    delete generate_glo_thread_;
+    generate_glo_thread_ = NULL;
+  }
+}
+
+Global_Plan::Global_Plan()
+{
+  ros::NodeHandle n_gp;
+  n_gp.param("simulation_model", this->simulation_flag, true);
+
+  if(simulation_flag == true)
+  {
+    this->start_pose_sub_ = n_gp.subscribe("/initialpose", 10, &Global_Plan::start_pose_call_back, this);
+  }
+  else
+  {
+    this->start_pose_sub_ = 
+      n_gp.subscribe("/localization/fusion_position", 10, &Global_Plan::CurGPSPtCallBack, this);
+  }
+
+  this->goal_pose_sub_ = 
+    n_gp.subscribe("/move_base_simple/goal", 10, &Global_Plan::goal_pose_call_back, this);
+  this->referenceline_pub_ = 
+    n_gp.advertise<nav_msgs::Path>("ReferenceLine_CenterPoint", 10);
+
+  generate_glo_thread_ = new boost::thread(boost::bind(&Global_Plan::global_thread_worker, this));
+}
+
 
 /***在参考线上寻找匹配点
  * 输入： search_pose               需要匹配的位置

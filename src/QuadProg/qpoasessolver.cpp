@@ -23,6 +23,16 @@ qpOASES::real_t* lb_XY_f;
 qpOASES::real_t* ub_XY_f;
 qpOASES::QProblem xy_fulloasesslover(2*arrayCapacity, 0);
 /******************/
+/*ST坐标系速度平滑*/
+qpOASES::real_t* H_ST_f;
+qpOASES::real_t* f_ST_f;
+qpOASES::real_t* A_ST_f;
+qpOASES::real_t* lbA_ST_f;
+qpOASES::real_t* ubA_ST_f;
+qpOASES::real_t* lb_ST_f;
+qpOASES::real_t* ub_ST_f;
+qpOASES::QProblem st_fulloasesslover(arrayCapacity, (arrayCapacity - 1));
+/******************/
 
 
 void SmoLine::qpOASES_init()
@@ -31,6 +41,7 @@ void SmoLine::qpOASES_init()
 
   qpOASES_SLinit();
   qpOASES_XYinit();
+  qpOASES_STinit();
 
   clock_t endTime = clock();
   ROS_WARN("qpOASES init time is: %f ms\r\n",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
@@ -40,6 +51,7 @@ void SmoLine::qpOASES_burn()
 {
   qpOASES_SLburn();
   qpOASES_XYburn();
+  qpOASES_STburn();
 }
 
 /*所求的点为全满，利用qpOASES求解器，求解二次规划*/
@@ -49,7 +61,8 @@ void SmoLine::qpOASES_solver()
 
   qpOASES_SLsolver();
   qpOASES_XYsolver();
-
+  genST();
+  qpOASES_STsolver();
   clock_t endTime = clock();
   ROS_WARN("hotstart time is: %f ms\r\n",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
 }
@@ -69,7 +82,7 @@ void SmoLine::qpOASES_solver(uint16_t& pointsize)
 
   clock_t endTime = clock();
 
-  ROS_WARN("init time is: %f ms",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
+  // ROS_WARN("init time is: %f ms",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
 }
 
 
@@ -241,11 +254,7 @@ void SmoLine::qpOASES_SLsolver()
 
   qpOASES::int_t nWSR = 1000;
   qpOASES::returnValue smoresult;
-
   smoresult = sl_fulloasesslover.hotstart(f_SL_f,lb_SL_f,ub_SL_f,lbA_SL_f,ubA_SL_f,nWSR);
-
-  
-  
   if(smoresult == qpOASES::SUCCESSFUL_RETURN)
   {
     // ROS_WARN("SUCCESSFUL hotstart,nWSR is:%d",nWSR);
@@ -312,13 +321,6 @@ void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
     f[3*i + 1] = 0.0;
     f[3*i + 2] = 0.0;
   }
-
-  //给最后的终点加权重，看看能不能减少时间
-    // H[(3*(pointsize-1)+0)*3*pointsize + (3*(pointsize-1)+0)] += 2*10000;
-    // H[(3*(pointsize-1)+1)*3*pointsize + (3*(pointsize-1)+1)] += 2*10000;
-
-    // f[3*(pointsize-1) + 0] += -2 * plan_goal_mags.l * 10000;
-    // f[3*(pointsize-1) + 1] += -2 * plan_goal_mags.dl* 10000;
     
   /************************************************************************************/
 
@@ -393,18 +395,10 @@ void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
     ub[2] = lb[2] = plan_start_mags.ddl;
   }
 
-  ub[3*pointsize - 3] = plan_goal_mags.l + 0.1;
-  lb[3*pointsize - 3] = plan_goal_mags.l - 0.1;
-  ub[3*pointsize - 2] = plan_goal_mags.dl+ 0.5;
-  lb[3*pointsize - 2] = plan_goal_mags.dl- 0.5;
+  ub[3*pointsize - 3] = lb[3*pointsize - 3] = plan_goal_mags.l;
+  ub[3*pointsize - 2] = lb[3*pointsize - 2] = plan_goal_mags.dl;
   ub[3*pointsize - 1] = ddlLimit;
   lb[3*pointsize - 1] =-ddlLimit;
-  // ub[3*pointsize - 3] = borderLimit;
-  // lb[3*pointsize - 3] =-borderLimit;
-  // ub[3*pointsize - 2] = dlLimit;
-  // lb[3*pointsize - 2] =-dlLimit;
-  // ub[3*pointsize - 1] = ddlLimit;
-  // lb[3*pointsize - 1] =-ddlLimit;
   /**********************************************/
 
   qpOASES::QProblem qpoasesslove(3*pointsize, (2*pointsize - 2));
@@ -604,7 +598,7 @@ void SmoLine::qpOASES_XYsolver()
       trajline_point.poses.push_back(pose_stamp);
     }
     // this->marker_pub_.publish(peak);
-    this->trajline_pub_.publish(trajline_point);
+    // this->trajline_pub_.publish(trajline_point);
     calc_traj_theta();
   }
 }
@@ -657,9 +651,8 @@ void SmoLine::qpOASES_XYsolver(const uint16_t pointsize)
     lb[2*i + 1] = this->trajline_SLpoint.poses[i].pose.position.y - ds;
     ub[2*i + 1] = this->trajline_SLpoint.poses[i].pose.position.y + ds;
   }
-  lb[2*pointsize - 1] = ub[2*pointsize - 1] = this->trajline_SLpoint.poses[pointsize - 1].pose.position.y;
-  lb[2*pointsize - 2] = ub[2*pointsize - 2] = this->trajline_SLpoint.poses[pointsize - 1].pose.position.x;
-
+  lb[2*pointsize - 1] = ub[2*pointsize - 1] = this->goal_pose.position.y;
+  lb[2*pointsize - 2] = ub[2*pointsize - 2] = this->goal_pose.position.x;
 
   qpOASES::int_t nWSR = 1000;
   qpOASES::returnValue smoresult;
@@ -711,11 +704,157 @@ void SmoLine::qpOASES_XYsolver(const uint16_t pointsize)
 }
 
 
+void SmoLine::qpOASES_STinit()
+{
+  /**生成**/
+  H_ST_f = new qpOASES::real_t[arrayCapacity *arrayCapacity];
+  for(int16_t i = 0; i < arrayCapacity *arrayCapacity; i++) H_ST_f[i] = 0.0;
+
+  f_ST_f = new qpOASES::real_t[arrayCapacity * 1];
+  for(int16_t i = 0; i < arrayCapacity; i++) f_ST_f[i] = 0.0;
+
+  Eigen::MatrixXd A1(3, 3);//生成平滑代价矩阵
+  A1 << 1, -2,  1,
+       -2,  4, -2,
+        1, -2,  1;
+
+  for(int16_t i = 0; i < arrayCapacity-2; i++)
+    for(int16_t j = 0; j < 3; j++)
+    {
+      //每3个点(3个参数)作为变量去计算代价；因此每换一个点就需要偏移一行一列
+      H_ST_f[(arrayCapacity)*(i + j) + i + 0] += A1(j, 0) * 2*this->w_st_smooth;
+      H_ST_f[(arrayCapacity)*(i + j) + i + 1] += A1(j, 1) * 2*this->w_st_smooth;
+      H_ST_f[(arrayCapacity)*(i + j) + i + 2] += A1(j, 2) * 2*this->w_st_smooth;
+    }
+
+  for(int16_t i = 0; i < arrayCapacity; i++)//生成期望速度代价
+    H_ST_f[arrayCapacity*i + i] += 2*this->w_st_ref;
+
+  for(int16_t i = 0; i < arrayCapacity; i++)//在路程间距固定的情况下，时间与速度相挂钩
+    f_ST_f[i] = this->ds*i/this->lon_speed * this->w_st_ref;
+
+  /**生成不等式约束，及 V<Vmax。  间隔以固定，可以通过时间变化量来进行约束 t2-t1>ds/Vmax**/
+  A_ST_f = new qpOASES::real_t[(arrayCapacity - 1) * arrayCapacity];
+  for(int16_t i = 0; i < (arrayCapacity - 1) * arrayCapacity; i++) A_ST_f[i] = 0.0;
+  for(int16_t i = 0; i < (arrayCapacity - 1); i++)
+  {
+    A_ST_f[arrayCapacity*i + i + 0] = -1;
+    A_ST_f[arrayCapacity*i + i + 1] =  1;
+  }
+
+  lbA_ST_f = new qpOASES::real_t[(arrayCapacity - 1)];
+  for(int16_t i = 0; i < (arrayCapacity - 1); i++)
+    lbA_ST_f[i] = this->ds/this->max_speed;
+
+  ubA_ST_f = new qpOASES::real_t[(arrayCapacity - 1)];
+
+  /***生成凸空间**/
+  lb_ST_f = new qpOASES::real_t[arrayCapacity];
+  ub_ST_f = new qpOASES::real_t[arrayCapacity];
+  for(int16_t i = 0; i < arrayCapacity; i++)
+  {
+    lb_ST_f[i] = 0.0;
+    ub_ST_f[i] = 25.0;
+  }
+
+  st_fulloasesslover.setPrintLevel(qpOASES::PL_NONE);
+
+  qpOASES::int_t nWSR = 1000;
+  qpOASES::returnValue smoresult;
+  smoresult = st_fulloasesslover.init(H_ST_f,f_ST_f,A_ST_f,lb_ST_f,ub_ST_f,lbA_ST_f,NULL,nWSR);
+
+  if(smoresult == qpOASES::SUCCESSFUL_RETURN)
+    ROS_WARN("ST slover has successful init");
+  else
+  {
+    ROS_WARN("error code %d",smoresult);
+    throw std::runtime_error("ST slover fault init");
+  }
+}
+
+void SmoLine::qpOASES_STburn()
+{
+  if(H_ST_f != NULL)
+  {
+    delete[] H_ST_f;
+    H_ST_f = NULL;
+  }
+  
+  if(f_ST_f != NULL)
+  {
+    delete[] f_ST_f;
+    f_ST_f = NULL;
+  }
+
+  if(A_ST_f != NULL)
+  {
+    delete[] A_ST_f;
+    A_ST_f = NULL;
+  }
+
+  if(lbA_ST_f != NULL)
+  {
+    delete[] lbA_ST_f;
+    lbA_ST_f = NULL;
+  }
+
+  if(ubA_ST_f != NULL)
+  {
+    delete[] ubA_ST_f;
+    ubA_ST_f = NULL;
+  }
+
+  if(lb_ST_f != NULL)
+  {
+    delete[] lb_ST_f;
+    lb_ST_f = NULL;
+  }
+
+  if(ub_ST_f != NULL)
+  {
+    delete[] ub_ST_f;
+    ub_ST_f = NULL;
+  }
+}
 
 
+void SmoLine::qpOASES_STsolver()
+{
+  for(int16_t i = 0; i < arrayCapacity; i++)//在路程间距固定的情况下，时间与速度相挂钩
+    f_ST_f[i] = -trajline_s[i]/this->lon_speed * 2*this->w_st_ref;
 
+  for(int16_t i = 0; i < (arrayCapacity - 1); i++)
+    lbA_ST_f[i] = (trajline_s[i+1]-trajline_s[i])/this->max_speed;
 
+  for(int16_t i = 0; i < arrayCapacity; i++)
+  {
+    lb_ST_f[i] = TSlb[i];
+    ub_ST_f[i] = TSub[i];
+  }
 
+  qpOASES::int_t nWSR = 1000;
+  qpOASES::returnValue smoresult;
+  smoresult = st_fulloasesslover.hotstart(f_ST_f,lb_ST_f,ub_ST_f,lbA_ST_f,NULL,nWSR);
+
+  if(smoresult == qpOASES::SUCCESSFUL_RETURN)
+  {
+    qpOASES::real_t xOpt[arrayCapacity];
+    st_fulloasesslover.getPrimalSolution(xOpt);
+
+    for(int16_t i = 0; i < arrayCapacity-1; i++)
+      trajline_point.poses[i].pose.orientation.w = 
+      (trajline_s[i+1]-trajline_s[i])/(xOpt[i+1] - xOpt[i]);
+
+    trajline_point.poses[arrayCapacity-1].pose.orientation.w = 
+    trajline_point.poses[arrayCapacity-2].pose.orientation.w;
+      
+    this->trajline_pub_.publish(trajline_point);
+
+    // for(int16_t i =0; i < arrayCapacity;i++)
+    //  std::cout<<"("<<lb_ST_f[i]<<","<<ub_ST_f[i]<<")"<<std::endl;
+  }
+
+}
 
 
 

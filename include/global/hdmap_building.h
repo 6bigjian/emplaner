@@ -25,6 +25,7 @@ public:
                       double spacing_distance = 0.5, bool nearly = true);
     void Generate_Original_Referenceline(const geometry_msgs::Pose& start_pose, const geometry_msgs::Pose& goal_pose);
     double Calc_kappa(const geometry_msgs::Pose& point1, const geometry_msgs::Pose& point2, const geometry_msgs::Pose& point3);
+    void find_obj_road(int start_index, int goal_index);
 
     static Eigen::Vector3d origin_point_;
     static lanelet::projection::MGRSProjector projector; // MGRS,  Projection：提供全球地理坐标系到局部平面坐标系的准换

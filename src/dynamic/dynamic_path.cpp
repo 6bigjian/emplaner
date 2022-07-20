@@ -21,6 +21,8 @@ void Dynamic_Plan::goal_pose_call_back(const geometry_msgs::PoseStamped::ConstPt
     goal_pose_.position.x = msg->pose.position.x;
     goal_pose_.position.y = msg->pose.position.y;
     goal_pose_.orientation = msg->pose.orientation;
+
+    this->obs_.Set_simulateMovObst();
 }
 
 /*读回ros odom坐标系数据 , 接收车的里程信息，控制车的移动*/
@@ -95,10 +97,11 @@ Dynamic_Plan::~Dynamic_Plan()
   }
 }
 
+#define dynamic_frequency  4u
 
 void Dynamic_Plan::dynamic_thread_worker()
 {
-  ros::Rate loop_rate(4);//变为250ms动态规划一次
+  ros::Rate loop_rate(dynamic_frequency);//变为250ms动态规划一次
 
   while(ros::ok())
   {
@@ -122,7 +125,8 @@ void Dynamic_Plan::dynamic_thread_worker()
         global_date::my_mutex.unlock();
 
         this->obs_.Get_globline();
-        this->obs_.Set_Obstacle();
+        this->obs_.Set_StaticObstacle();
+        this->obs_.calc_movobjposition((double)dynamic_frequency);
 
         this->dynamic_frenet_.clear();//动态规划先把上一次的frenet路径清楚
 
@@ -138,9 +142,9 @@ void Dynamic_Plan::dynamic_thread_worker()
       }
       else
       {
-        this->obs_.Set_Obstacle();
+        this->obs_.Set_StaticObstacle();
+        this->obs_.calc_movobjposition((double)dynamic_frequency);
         Generate_Dynamic_Path(New_car_pose, 2);
-        clock_t endTime = clock();
       }
 
       global_date::my_mutex.lock();

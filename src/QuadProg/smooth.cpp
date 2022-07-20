@@ -60,6 +60,9 @@ SmoLine::SmoLine()
 {
   ros::NodeHandle n_sml;
   n_sml.param("simulation_model", this->simulation_flag, true);
+  n_sml.param<double>("lon_speed", this->lon_speed, 1.0);
+
+  this->divisionTime_num = (int16_t)((((double)arrayCapacity*ds)/lon_speed + 5.0)/dt);
 
   if(this->simulation_flag == true)
   {
@@ -98,10 +101,11 @@ SmoLine::~SmoLine()
   }
 }
 
+#define quadprog_frequency  5u
 
 void SmoLine::sml_thread_worker()
 {
-  ros::Rate loop_rate(5);
+  ros::Rate loop_rate(quadprog_frequency);
 
 #if qpsolver == qpoasessolver
     qpOASES_init();
@@ -127,6 +131,7 @@ void SmoLine::sml_thread_worker()
     {
       global_date::obj_mutex.lock();
       generate_convex_space();
+      prediMovObsTraj();
       global_date::obj_mutex.unlock();
       this->first_sml = false;
 
@@ -207,48 +212,47 @@ void SmoLine::generate_convex_space()
     }
   }
 
-  for(uint16_t i = 0; i < ObsProj::All_obstacle.size(); i++)
+  /*设定静态障碍物的凸空间*/
+  for(uint16_t i = 0; i < ObsProj::Static_Obstacle.size(); i++)
   {
-    if(ObsProj::All_obstacle[i].obs_flag == false) continue;
+    if(ObsProj::Static_Obstacle[i].obs_flag == false) continue;
 
-    double obs_s_min = ObsProj::All_obstacle[i].s_set - ObsProj::All_obstacle[i].length/2;
-    double obs_s_max = ObsProj::All_obstacle[i].s_set + ObsProj::All_obstacle[i].length/2;
+    double obs_s_min = ObsProj::Static_Obstacle[i].s_set - ObsProj::Static_Obstacle[i].length/2;
+    double obs_s_max = ObsProj::Static_Obstacle[i].s_set + ObsProj::Static_Obstacle[i].length/2;
 
     int16_t start_index = FindObjIndex(obs_s_min, MINPOINT);
     int16_t end_index = FindObjIndex(obs_s_max, MAXPOINT);
-    int16_t centre_index = FindObjIndex(ObsProj::All_obstacle[i].s_set, MIDPOINT);
+    int16_t centre_index = FindObjIndex(ObsProj::Static_Obstacle[i].s_set, MIDPOINT);
     if(centre_index == LINEBACK) centre_index = 0;
     else if(centre_index == LINEFRONT) centre_index = arraysize-1;
 
     if(start_index == LINEFRONT) continue;//障碍物超出界限
     else if(end_index == LINEBACK) continue;//障碍物在车后面
-    else
-    {
-      if(start_index == LINEBACK) //表示障碍物一部分在车后面，一部分在前面
-      {
-        start_index = 0;
-        if(end_index == LINEFRONT) end_index = arraysize;//障碍物超长，超过了整个规划的范围
-      }
-      else if(end_index == LINEFRONT)  //表示障碍物一部分超出二次规划范围，一部分在范围内
-      {
-        end_index = arraysize;
-      }
 
-      if(L_limit[centre_index][3] > ObsProj::All_obstacle[i].l_set)  //动态规划向左绕
+    if(start_index == LINEBACK) //表示障碍物一部分在车后面，一部分在前面
+    {
+      start_index = 0;
+      if(end_index == LINEFRONT) end_index = arraysize;//障碍物超长，超过了整个规划的范围
+    }
+    else if(end_index == LINEFRONT)  //表示障碍物一部分超出二次规划范围，一部分在范围内
+    {
+      end_index = arraysize;
+    }
+
+    if(L_limit[centre_index][3] > ObsProj::Static_Obstacle[i].l_set)  //动态规划向左绕
+    {
+      for(int16_t j = start_index; j < end_index; j++)
       {
-        for(int16_t j = start_index; j < end_index; j++)
-        {
-            if(L_limit[j][2] < ObsProj::All_obstacle[i].l_set + ObsProj::All_obstacle[i].width/2)
-              L_limit[j][2] = ObsProj::All_obstacle[i].l_set + ObsProj::All_obstacle[i].width/2;
-        }
+          if(L_limit[j][2] < ObsProj::Static_Obstacle[i].l_set + ObsProj::Static_Obstacle[i].width/2)
+            L_limit[j][2] = ObsProj::Static_Obstacle[i].l_set + ObsProj::Static_Obstacle[i].width/2;
       }
-      else    //动态规划向右绕
+    }
+    else    //动态规划向右绕
+    {
+      for(int16_t j = start_index; j < end_index; j++)
       {
-        for(int16_t j = start_index; j < end_index; j++)
-        {
-            if(L_limit[j][1] > ObsProj::All_obstacle[i].l_set - ObsProj::All_obstacle[i].width/2)
-              L_limit[j][1] = ObsProj::All_obstacle[i].l_set - ObsProj::All_obstacle[i].width/2;
-        }
+          if(L_limit[j][1] > ObsProj::Static_Obstacle[i].l_set - ObsProj::Static_Obstacle[i].width/2)
+            L_limit[j][1] = ObsProj::Static_Obstacle[i].l_set - ObsProj::Static_Obstacle[i].width/2;
       }
     }
   }
