@@ -72,10 +72,10 @@ void ObsProj::Set_StaticObstacle()
   {
     double array[][2] = 
     {
-      // {-234.2, -59.0},
-      // {-224.7, -55.7},
-      // {-255.2, -67.8},
-      // {-275.8, -81.5},
+      {-234.2, -59.0},
+      {-224.7, -55.7},
+      {-255.2, -67.8},
+      {-275.8, -81.5},
       { 0x00,   0x00}     //结束标识符
     };
 
@@ -210,7 +210,7 @@ if(OBSTYPE == MOVEOBSTACLE) goto TransferMoveObs;
     double lat_err = d_err[0] * nor[0] + d_err[1] * nor[1];
 
 
-    if(abs(lon_err) > 5 || abs(lat_err) > 5)
+    if(abs(lon_err) > global_date::identifyDist || abs(lat_err) > global_date::identifyDist)
     {
       Static_Obstacle[i].obs_flag = false;
       continue;     //这个障碍物理参考线太远
@@ -220,7 +220,7 @@ if(OBSTYPE == MOVEOBSTACLE) goto TransferMoveObs;
     Static_Obstacle[i].l_set = lat_err;
     Static_Obstacle[i].obs_flag = true;
   }
-  
+  return;
 
 TransferMoveObs:
   for(uint16_t i = 0; i < Move_Obstacle.size(); i++)
@@ -240,8 +240,7 @@ TransferMoveObs:
     //横向误差
     double lat_err = d_err[0] * nor[0] + d_err[1] * nor[1];
 
-
-    if(abs(lon_err) > 5 || abs(lat_err) > 5)
+    if(lon_err < -global_date::identifyDist || abs(lat_err) > global_date::identifyDist)
     {
       Move_Obstacle[i].obs_flag = false;
       continue;     //这个障碍物理参考线太远

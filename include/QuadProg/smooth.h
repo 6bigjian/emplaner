@@ -2,11 +2,20 @@
 
 #include"emplaner/head.h"
 
-#define arrayCapacity 40u
-
+#define    arrayCapacity      40u
 
 #define    qpoasessolver      0     //qpOASES求解器
-#define    qpsolver   qpoasessolver
+#define    qpsolver           qpoasessolver
+
+
+#define    lon_speed          1.0//期望线速度
+#define    overtake_speed     1.5//超车速度
+#define    max_speed          2.0//最大线速度
+
+#define    ds                 0.5//sl以0.5m为间隔取点
+#define    dt                 0.5//st以0.5s为间隔取点
+
+#define    divisionTime_num   (int16_t)(((double)arrayCapacity*ds)/(lon_speed * dt)) //ST图采样总数
 
 enum{
   LINEBACK = -2,  //在规划后面
@@ -51,32 +60,29 @@ public:
 
   void qpOASES_SLinit();
   void qpOASES_SLburn();
-  void qpOASES_SLsolver();
-  void qpOASES_SLsolver(const uint16_t pointsize);
+  bool qpOASES_SLsolver();
+  bool qpOASES_SLsolver(const uint16_t pointsize);
 
   void qpOASES_XYinit();
   void qpOASES_XYburn();
-  void qpOASES_XYsolver();
-  void qpOASES_XYsolver(const uint16_t pointsize);
+  bool qpOASES_XYsolver();
+  bool qpOASES_XYsolver(const uint16_t pointsize);
 
   void qpOASES_STinit();
   void qpOASES_STburn();
-  void qpOASES_STsolver();
-  void qpOASES_STsolver(const uint16_t pointsize);
+  bool qpOASES_STsolver();
+  bool qpOASES_STsolver(const uint16_t pointsize);
   /******************/
 private:
   uint16_t arraysize;
   int16_t plan_startIndex;
 
-  double lon_speed = 1.0;
-  double max_speed = 2.0;
+  const double max_acc = 4.0;
+  const double min_acc = -6.0;
 
   const double borderLimit = 2.0;
   const double dlLimit = 10.0;
   const double ddlLimit = 100;
-
-  const double ds = 0.5;//sl以0.5m为间隔取点
-  const double dt = 0.5;//st以0.5s为间隔取点
 
   const double safety_distance = 0.2;
 
@@ -94,22 +100,20 @@ private:
   double w_cost_length = 0.1;             //长度代价
   double w_cost_ref = 1.0;                //相似代价
 
-  double w_st_smooth = 10.0;
-  double w_st_ref = 1.0;
+  double w_cost_s = 0.0001;
+  double w_cost_speed = 1.0;
+  double w_cost_acc = 10.0;
+  double w_cost_jerk = 50.0;
 
-  int16_t divisionTime_num = (((double)arrayCapacity*ds)/lon_speed + 5);
-
-  double L_limit[arrayCapacity][4];   //s,l_max,l_min,traj_line;
+  double L_limit[arrayCapacity][4];     //s,l_max,l_min,traj_line;
 
   double save_line[arrayCapacity][4];   //保持路径，在平滑犯病的时候用。
 
-  double move_region[arrayCapacity][2]; //
+  double STub[divisionTime_num];        //ST图以T为坐标轴的s上边界，及在这个时间s不能超越这个极限值
+  double STlb[divisionTime_num];        //ST图以T为坐标轴的s下边界，及在这个时间s不能小于这个极限值
 
-  double STub[50];        //ST图以T为坐标轴的s上边界，及在这个时间s不能超越这个极限值
-  double STlb[50];        //ST图以T为坐标轴的s下边界，及在这个时间s不能小于这个极限值
-
-  double TSub[arrayCapacity];//ST图以s为坐标轴的T上边界，及在这个到达此处的时间T不能超越这个极限值
-  double TSlb[arrayCapacity];//ST图以s为坐标轴的T下边界，及在这个到达此处的时间T不能小于这个极限值
+  double holdSpeed;
+  double holdAcc;
 
   bool simulation_flag;
   bool partLine_build_ = false;
@@ -123,7 +127,7 @@ private:
   nav_msgs::Path  trajline_SLpoint;
   nav_msgs::Path  trajline_point;                //最终平滑曲线
   std::vector<double> traj_theta;               //轨迹的theta
-  double trajline_s[arrayCapacity];       //用来存放最终平滑轨迹的s
+  double trajline_s[arrayCapacity];       //存放最终平滑轨迹的s,用于制作ST图
 
   geometry_msgs::Pose New_car_pose; //当前车辆位置
   geometry_msgs::Pose goal_pose;   //终点位置坐标

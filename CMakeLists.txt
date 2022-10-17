@@ -17,7 +17,11 @@ find_package(catkin REQUIRED COMPONENTS
   lanelet2_extension
   tf2_ros
   tf2_geometry_msgs
+  # message_generation
 )
+
+# add_message_files(FILES trajLine.msg)
+# generate_messages(DEPENDENCIES std_msgs)
 
 
 set(src_file
@@ -46,7 +50,7 @@ SET(CMAKE_BUILD_TYPE DEBUG)
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES emplaner
-#  CATKIN_DEPENDS roscpp
+#  CATKIN_DEPENDS roscpp 
 #  DEPENDS system_lib
 )
 

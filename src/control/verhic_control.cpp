@@ -156,7 +156,7 @@ void Ver_Ctrl::ctrl_thread_worker()
       verhicle_control(this->traj_line, this->New_car_pose);
     }
     
-    loop_rate.sleep();
+    loop_rate.sleep(); 
   }
 }
 
@@ -181,7 +181,9 @@ void Ver_Ctrl::verhicle_control(const nav_msgs::Path& referenceline, const geome
   {
     point_distance = sqrt(pow(referenceline.poses[i].pose.position.x - x, 2) +
                           pow(referenceline.poses[i].pose.position.y - y, 2));
-    if(point_distance > Ld) break;
+    if(point_distance > Ld){
+      break;
+    }
   }
 
   
@@ -206,8 +208,11 @@ void Ver_Ctrl::verhicle_control(const nav_msgs::Path& referenceline, const geome
   }
   else
   {
-    msg.x = referenceline.poses[carindex].pose.orientation.w;
-    // ROS_WARN("VX is :%f",msg.x);
+    carindex++;
+    if(carindex >= referenceline.poses.size()) carindex = referenceline.poses.size() - 1;
+    // msg.x = referenceline.poses[carindex + 1].pose.orientation.x + referenceline.poses[carindex + 1].pose.orientation.y * 0.01;
+    msg.x = referenceline.poses[carindex].pose.orientation.x;
+    ROS_WARN("VX is :%f",msg.x);
   }
   global_date::my_mutex.unlock();
   //实际跑车打角

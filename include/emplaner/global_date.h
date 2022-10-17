@@ -69,6 +69,9 @@ extern bool reach_goal_;
 extern const double vehicleWidth;
 extern const double vehicleLength;
 
+extern const double identifyDist;
+extern const double fllowDist;
+
 extern boost::recursive_mutex my_mutex;
 extern boost::recursive_mutex obj_mutex;
 }

@@ -15,6 +15,10 @@ bool reach_goal_ = false;     //抵达终点
 const double vehicleWidth = 0.5;
 const double vehicleLength = 1.0;
 
+const double identifyDist = 5.0;//后方障碍物的识别范围
+
+const double fllowDist = 2 * vehicleLength; //跟车距离
+
 boost::recursive_mutex my_mutex;  //上锁
 boost::recursive_mutex obj_mutex;  //障碍物锁
 }

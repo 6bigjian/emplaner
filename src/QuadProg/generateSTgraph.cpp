@@ -9,29 +9,40 @@ void SmoLine::prediMovObsTraj()
   {
     ObsProj::Move_Obstacle[i].OBSSTRG = NULLIFY;
     if(ObsProj::Move_Obstacle[i].obs_flag == false) continue;
-    else if(ObsProj::Move_Obstacle[i].V_set >= this->lon_speed)
+    else if(ObsProj::Move_Obstacle[i].V_set >= lon_speed)
     {
       ObsProj::Move_Obstacle[i].obs_flag = false;
       continue;
     }
 
-    double encount_t = (ObsProj::Move_Obstacle[i].s_set - L_limit[0][0])/
-                       (this->lon_speed - ObsProj::Move_Obstacle[i].V_set);//相遇时间差
+    //计算车头与障碍物尾部的相遇时间
+    double overlap_t = (ObsProj::Move_Obstacle[i].s_set - L_limit[0][0])/
+                       (lon_speed - ObsProj::Move_Obstacle[i].V_set);
 
-    if(encount_t > 30)//障碍物超出界限
-    {
+    if(overlap_t >= arraysize*ds/lon_speed){//障碍物超出界限
       ObsProj::Move_Obstacle[i].obs_flag = false;
       continue;
+    }else{
+      //如果相遇时间在规定时间内，将车速换成超车速度
+      overlap_t = (ObsProj::Move_Obstacle[i].s_set - L_limit[0][0])/
+                  (overtake_speed - ObsProj::Move_Obstacle[i].V_set);
     }
+    
+    double encount_t = ((ObsProj::Move_Obstacle[i].s_set - ObsProj::Move_Obstacle[i].length/2) - 
+                       (L_limit[0][0] + this->vehicleLength/2)) /
+                       (overtake_speed - ObsProj::Move_Obstacle[i].V_set);
+    //车辆后角点与障碍物前角点的相遇时间
+    double deviate_t = ((ObsProj::Move_Obstacle[i].s_set + ObsProj::Move_Obstacle[i].length/2) - 
+                       (L_limit[0][0] - this->vehicleLength/2)) /
+                       (overtake_speed - ObsProj::Move_Obstacle[i].V_set);
 
-    double encount_s = ObsProj::Move_Obstacle[i].s_set + encount_t*ObsProj::Move_Obstacle[i].V_set;
-
-    double obs_s_min = encount_s - ObsProj::Move_Obstacle[i].length/2 - this->vehicleLength;
-    double obs_s_max = encount_s + ObsProj::Move_Obstacle[i].length/2 + this->vehicleLength;
+    double obs_s_min = ObsProj::Move_Obstacle[i].s_set + ObsProj::Move_Obstacle[i].V_set * encount_t - ObsProj::Move_Obstacle[i].length/2;
+    double obs_s_mid = ObsProj::Move_Obstacle[i].s_set + ObsProj::Move_Obstacle[i].V_set * overlap_t;
+    double obs_s_max = ObsProj::Move_Obstacle[i].s_set + ObsProj::Move_Obstacle[i].V_set * deviate_t + ObsProj::Move_Obstacle[i].length/2;
 
     int16_t start_index = FindObjIndex(obs_s_min, MINPOINT);
     int16_t end_index = FindObjIndex(obs_s_max, MAXPOINT);
-    int16_t centre_index = FindObjIndex(encount_s, MIDPOINT);
+    int16_t centre_index = FindObjIndex(obs_s_mid, MIDPOINT);
     if(centre_index == LINEBACK) centre_index = 0;
     else if(centre_index == LINEFRONT) centre_index = arraysize-1;
 
@@ -42,26 +53,39 @@ void SmoLine::prediMovObsTraj()
     }
     else if(end_index == LINEBACK)//障碍物在车后面
     {
+      
       ObsProj::Move_Obstacle[i].obs_flag = false;
+      // if(L_limit[0][0] - ObsProj::Move_Obstacle[i].s_set < global_date::identifyDist){//后方障碍物在识别范围内
+      //   ObsProj::Move_Obstacle[i].OBSSTRG = FORWARD;
+      //   ObsProj::Move_Obstacle[i].obs_flag = true;
+      //   ObsProj::Move_Obstacle[i].backIndex = 0;
+      //   ObsProj::Move_Obstacle[i].frontIndex = 0;
+      // }
       continue;
-    }
-
-    if(start_index == LINEBACK) continue; //表示动态障碍物之间的距离不足以超越
-    else if(end_index == LINEFRONT)  //表示障碍物一部分超出二次规划范围，一部分在范围内
-      end_index = arraysize;
-
-    if(centre_index == LINEFRONT)
-    {
-      ObsProj::Move_Obstacle[i].obs_flag = false;
-      continue;//障碍物超出界限
     }
 
     ObsProj::Move_Obstacle[i].backIndex = start_index;
     ObsProj::Move_Obstacle[i].frontIndex = end_index;
 
+    if(start_index == LINEBACK){//动态障碍物的前段在车后面，
+      start_index = 0;
+      ObsProj::Move_Obstacle[i].backIndex = -1;
+    }
+
+    if(end_index == LINEFRONT){//后段超出规划
+      end_index = arraysize - 1;
+      ObsProj::Move_Obstacle[i].frontIndex = arraysize;
+    }
+
+    
+    
+
+    int16_t carLengthIndex = FindObjIndex(L_limit[0][0] + 3 * this->vehicleLength, MIDPOINT);//计算车长会占据多少个间隔点
+
     bool ub_flag = true;
     bool lb_flag = true;
-    for(int16_t j = start_index; j <= end_index; j++)
+
+    for(int16_t j = std::max(start_index - carLengthIndex, 0); j <= std::min(end_index + carLengthIndex, arraysize - 1); j++)
     {
       if(L_limit[j][1] - ObsProj::Move_Obstacle[i].l_set - 
          ObsProj::Move_Obstacle[i].width/2 < this->vehicleWidth) ub_flag = false;
@@ -109,9 +133,9 @@ void SmoLine::genST()
                          pow(trajline_point.poses[i].pose.position.y - trajline_point.poses[i-1].pose.position.y, 2));
 
   STub[0] = STlb[0] = 0.0;
-  for(int16_t T = 1; T < divisionTime_num ;T++)
+  for(int16_t T = 1; T < divisionTime_num; T++)
   {
-    STub[T] = trajline_s[arraysize-1];
+    STub[T] = 2*trajline_s[arraysize-1];
     STlb[T] = 0.0;
   }
   
@@ -130,39 +154,41 @@ void SmoLine::genST()
     
     for(int16_t T = 1; T < divisionTime_num; T++)
     {
-      predMovObs_s = ObsProj::Move_Obstacle[i].s_set + ObsProj::Move_Obstacle[i].V_set * dt*T;
+      predMovObs_s = ObsProj::Move_Obstacle[i].s_set + ObsProj::Move_Obstacle[i].V_set * dt * T;
       predMovback_s = predMovObs_s - ObsProj::Move_Obstacle[i].length/2;
       predMovfront_s = predMovObs_s + ObsProj::Move_Obstacle[i].length/2;
 
       if(predMovfront_s > L_limit[arraysize-1][0]) break;
 
-      while(predMovback_s > L_limit[backIndex][0])
+      while(predMovback_s > L_limit[backIndex][0] && backIndex < arraysize)
         backIndex++;
       
-      while(predMovfront_s > L_limit[frontIndex][0])
+      while(predMovfront_s > L_limit[frontIndex][0] && frontIndex < arraysize)
         frontIndex++;
 
-      if(ObsProj::Move_Obstacle[i].OBSSTRG == OVERTAKE)
-      { //设置上边界，在到达超车区域前不要超车
+      if(backIndex >= arraysize) backIndex = arraysize - 1;
+      if(frontIndex >= arraysize) frontIndex = arraysize - 1;
+
+      if(ObsProj::Move_Obstacle[i].OBSSTRG == OVERTAKE){ 
+        //设置上边界，在到达超车区域前不要超车
         if((backIndex <= ObsProj::Move_Obstacle[i].backIndex) && (predMovback_s >= L_limit[0][0]))
-          if(abs(ObsProj::Move_Obstacle[i].l_set - L_limit[backIndex][3]) < 
-            ObsProj::Move_Obstacle[i].width/2 + this->vehicleWidth/2)
-            if(trajline_s[backIndex] < STub[T])
-              STub[T] = trajline_s[backIndex];
+            if(trajline_s[backIndex] + this->vehicleLength/2 < STub[T])
+              STub[T] = trajline_s[backIndex] + this->vehicleLength/2;
         //设置下边界，超车完成后，要保证不被后车追上
         if((frontIndex >= ObsProj::Move_Obstacle[i].frontIndex) && (predMovfront_s >= L_limit[0][0]))
-        {
-          if(abs(ObsProj::Move_Obstacle[i].l_set - L_limit[frontIndex][3]) <
-            ObsProj::Move_Obstacle[i].width/2 + this->vehicleWidth/2)
-          {
-            if(trajline_s[frontIndex] > STlb[T])
-              STlb[T] = trajline_s[frontIndex];
-          }
-          else STlb[T] = STlb[T-1];
-        }
-        else STlb[T] = STlb[T-1];
+          if(trajline_s[frontIndex] - this->vehicleLength/2> STlb[T])
+            STlb[T] = trajline_s[frontIndex] - this->vehicleLength/2;
+
+        if(STlb[T-1] > STlb[T]) STlb[T] = STlb[T-1];
+      }else if(ObsProj::Move_Obstacle[i].OBSSTRG == FORWARD){
+        if((frontIndex >= ObsProj::Move_Obstacle[i].frontIndex) && (predMovfront_s >= L_limit[0][0]))
+          if(trajline_s[frontIndex] + this->vehicleLength/2 > STlb[T])
+            STlb[T] = trajline_s[frontIndex] + this->vehicleLength/2;
+      }else if(ObsProj::Move_Obstacle[i].OBSSTRG == FOLLOW){
+        if(predMovback_s >= L_limit[0][0])
+            if((predMovback_s - L_limit[0][0]) - 2 * global_date::fllowDist - this->vehicleLength/2 < STub[T])
+              STub[T] = (predMovback_s - L_limit[0][0]) - 2 * global_date::fllowDist - this->vehicleLength/2;
       }
-      // std::cout<<"("<<STlb[T]<<","<<STub[T]<<","<<L_limit[backIndex][3]<<")"<<std::endl;
     }
   }
 
@@ -170,26 +196,8 @@ void SmoLine::genST()
   for(int16_t T = divisionTime_num-1; T > 0; T--)
     if(STub[T] < STub[T-1]) STub[T-1] = STub[T];
 
-  //ST坐标轴反函数转换
-  int16_t T1 = 1, T2 = 1;
-  TSub[0] = TSlb[0] = 0.0;
-  for(int16_t j = 1; j < arraysize; j++)
-  {
-    TSub[j] = divisionTime_num*dt;//上限时间等于细分时间个数*时间间隔
-    TSlb[j] = 0.0;
-
-    for(; T1 < divisionTime_num; T1++)
-      if(trajline_s[j] <= STlb[T1])
-      {
-        TSub[j] = (double)(T1-1)*0.5;
-        break;
-      }
-
-    for(; T2 < divisionTime_num; T2++)
-      if(trajline_s[j] <= STub[T2])
-      {
-        TSlb[j] = (double)(T2-1)*0.5;
-        break;
-      }
-  }
+  // std::cout<<"\rn"<<std::endl;
+  // for(int16_t i = 0; i < divisionTime_num; i++){
+  //   ROS_WARN("(%f, %f, %f)",dt*i, STlb[i], STub[i]);
+  // }
 }

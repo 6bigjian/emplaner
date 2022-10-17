@@ -25,7 +25,7 @@ private:
   bool ctrl_flag = false;
 
   int16_t carindex;
-  int16_t Ld = 3;//前瞻距离
+  int16_t Ld = 1;//前瞻距离
   double vx = 1;
 
   nav_msgs::Path traj_line;

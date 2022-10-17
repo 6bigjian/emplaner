@@ -60,9 +60,7 @@ SmoLine::SmoLine()
 {
   ros::NodeHandle n_sml;
   n_sml.param("simulation_model", this->simulation_flag, true);
-  n_sml.param<double>("lon_speed", this->lon_speed, 1.0);
-
-  this->divisionTime_num = (int16_t)((((double)arrayCapacity*ds)/lon_speed + 5.0)/dt);
+  // n_sml.param<double>("lon_speed", this->lon_speed, 1.0);
 
   if(this->simulation_flag == true)
   {
@@ -171,9 +169,9 @@ void SmoLine::generate_convex_space()
 
     for(uint16_t i = 0; i < arrayCapacity; i++)
     {
-      if(start_s + i*this->ds < dynamic_frenet.back().s) //平滑的路径要在动态规划的范围内
+      if(start_s + i * ds < dynamic_frenet.back().s) //平滑的路径要在动态规划的范围内
       {
-        L_limit[i][0] = start_s + i*this->ds;
+        L_limit[i][0] = start_s + i * ds;
         L_limit[i][1] = borderLimit;
         L_limit[i][2] = -borderLimit;
 
@@ -193,9 +191,9 @@ void SmoLine::generate_convex_space()
 
     for(uint16_t i = 0; i < arrayCapacity; i++)
     {
-      if(start_s + i*this->ds < dynamic_frenet.back().s) //平滑的路径要在动态规划的范围内
+      if(start_s + i * ds < dynamic_frenet.back().s) //平滑的路径要在动态规划的范围内
       {
-        L_limit[i][0] = start_s + i*this->ds;
+        L_limit[i][0] = start_s + i * ds;
         L_limit[i][1] = borderLimit;
         L_limit[i][2] = -borderLimit;
 
@@ -435,7 +433,7 @@ void SmoLine::Frenet_trans_Cartesian()
 
   uint16_t match_index = 0;
   double tor[2],nor[2];
-  double ds;
+  double pri_s;
   double project_point[2];//匹配点与投影点
   geometry_msgs::Point p;
   for(uint16_t i = 0; i < arraysize; i++)
@@ -447,13 +445,13 @@ void SmoLine::Frenet_trans_Cartesian()
       if(match_index >= reference_path.s.size()) goto fail;
     }
     //求匹配点与投影点之间的ds
-    ds = L_limit[i][0] - reference_path.s[match_index];
+    pri_s = L_limit[i][0] - reference_path.s[match_index];
     //切向量
     tor[0] = cos(reference_path.theta[match_index]); 
     tor[1] = sin(reference_path.theta[match_index]); 
     //计算投影点信息
-    project_point[0] = reference_path.referenceline.poses[match_index].pose.position.x + ds * tor[0];
-    project_point[1] = reference_path.referenceline.poses[match_index].pose.position.y + ds * tor[1];
+    project_point[0] = reference_path.referenceline.poses[match_index].pose.position.x + pri_s * tor[0];
+    project_point[1] = reference_path.referenceline.poses[match_index].pose.position.y + pri_s * tor[1];
     //计算法；向量
     nor[0] = -sin(reference_path.theta[match_index]); 
     nor[1] = cos(reference_path.theta[match_index]); 
@@ -486,12 +484,23 @@ fail:
 /*计算车辆的规划起点，并判断是否需要重新以车辆位置为起点规划，需要true,不需要false*/
 bool SmoLine::Calc_Plan_Start_Point()
 {
-  if(this->first_sml == true)//第一次规划从起点开始
+  if(this->first_sml == true){//第一次规划从起点开始
+    this->holdSpeed = 0;
+    this->holdAcc = 0;
     return true;
+  }
 
   //计算当前车辆与上一时刻平滑轨迹的匹配点
   this->vehTotraj_projIndex_ = Global_Plan::Search_Match_Point(New_car_pose.position.x, New_car_pose.position.y, 
                                             trajline_point, 0, trajline_point.poses.size() - 1);
+
+  //保留速度
+  // this->holdSpeed = trajline_point.poses[this->vehTotraj_projIndex_].pose.orientation.x +
+  //                   trajline_point.poses[this->vehTotraj_projIndex_].pose.orientation.y * 
+  //                   1.0 / (double)quadprog_frequency;
+  this->holdSpeed = trajline_point.poses[this->vehTotraj_projIndex_ + 1].pose.orientation.x;
+  this->holdAcc = trajline_point.poses[this->vehTotraj_projIndex_ + 1].pose.orientation.y;
+
   if(this->vehTotraj_projIndex_ >= retaintraj_num) return true; //跑得太远，需要从新规划
   //车到匹配点的误差向量
   double d_err[2] = {(New_car_pose.position.x - trajline_point.poses[this->vehTotraj_projIndex_].pose.position.x),

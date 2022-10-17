@@ -31,7 +31,7 @@ qpOASES::real_t* lbA_ST_f;
 qpOASES::real_t* ubA_ST_f;
 qpOASES::real_t* lb_ST_f;
 qpOASES::real_t* ub_ST_f;
-qpOASES::QProblem st_fulloasesslover(arrayCapacity, (arrayCapacity - 1));
+qpOASES::QProblem st_fulloasesslover(3*divisionTime_num, 2*(divisionTime_num - 1));
 /******************/
 
 
@@ -58,13 +58,16 @@ void SmoLine::qpOASES_burn()
 void SmoLine::qpOASES_solver()
 {
   clock_t startTime = clock();
+  if(qpOASES_SLsolver())
+    if(qpOASES_XYsolver()){
+      global_date::obj_mutex.lock();
+      genST();
+      global_date::obj_mutex.unlock();
+      qpOASES_STsolver();
+    }
 
-  qpOASES_SLsolver();
-  qpOASES_XYsolver();
-  genST();
-  qpOASES_STsolver();
   clock_t endTime = clock();
-  ROS_WARN("hotstart time is: %f ms\r\n",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
+  // ROS_WARN("hotstart time is: %f ms\r\n",double(endTime - startTime)*1000/CLOCKS_PER_SEC);
 }
 
 
@@ -76,8 +79,14 @@ void SmoLine::qpOASES_solver(uint16_t& pointsize)
   if(pointsize >= 10)
   {
     plan_goal_mags = Cartesian2Frenet(goal_pose);//计算终点信息
-    qpOASES_SLsolver(pointsize);
-    qpOASES_XYsolver(pointsize);
+
+    if(qpOASES_SLsolver(pointsize))
+      if(qpOASES_XYsolver(pointsize)){
+        global_date::obj_mutex.lock();
+        genST();
+        global_date::obj_mutex.unlock();
+        qpOASES_STsolver();
+      }
   }
 
   clock_t endTime = clock();
@@ -208,7 +217,7 @@ void SmoLine::qpOASES_SLburn()
   }
 }
 
-void SmoLine::qpOASES_SLsolver()
+bool SmoLine::qpOASES_SLsolver()
 {
   for(int16_t i = 0; i < arrayCapacity; i++)
   {
@@ -270,6 +279,7 @@ void SmoLine::qpOASES_SLsolver()
     }
 
     Frenet_trans_Cartesian();
+    return true;
   }
   else
   {
@@ -281,10 +291,11 @@ void SmoLine::qpOASES_SLsolver()
       L_limit[i][2] = save_line[i][2];
       L_limit[i][3] = save_line[i][3];
     }
+    return false;
   }
 }
 
-void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
+bool SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
 {
   L_limit[pointsize-1][0] = plan_goal_mags.s;//保存终点s
   L_limit[pointsize-1][1] = borderLimit;
@@ -410,7 +421,7 @@ void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
 
   if(smoresult == qpOASES::SUCCESSFUL_RETURN)
   {
-    ROS_WARN("SL RETURN,nWSR is:%d",nWSR);
+    // ROS_WARN("SL RETURN,nWSR is:%d",nWSR);
     qpOASES::real_t xOpt[3*pointsize];
     qpoasesslove.getPrimalSolution(xOpt);
 
@@ -423,6 +434,7 @@ void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
     }
 
     Frenet_trans_Cartesian();
+    return true;
   }
   else
   {
@@ -434,6 +446,7 @@ void SmoLine::qpOASES_SLsolver(const uint16_t pointsize)
       L_limit[i][2] = save_line[i][2];
       L_limit[i][3] = save_line[i][3];
     }
+    return false;
   }
 }
 
@@ -548,7 +561,7 @@ void SmoLine::qpOASES_XYburn()
 }
 
 
-void SmoLine::qpOASES_XYsolver()
+bool SmoLine::qpOASES_XYsolver()
 {
   for(uint16_t i = 0; i < arrayCapacity; i++)
   {
@@ -600,10 +613,14 @@ void SmoLine::qpOASES_XYsolver()
     // this->marker_pub_.publish(peak);
     // this->trajline_pub_.publish(trajline_point);
     calc_traj_theta();
+
+    return true;
+  }else{
+    return false;
   }
 }
 
-void SmoLine::qpOASES_XYsolver(const uint16_t pointsize)
+bool SmoLine::qpOASES_XYsolver(const uint16_t pointsize)
 {
   qpOASES::real_t H[2*pointsize * 2*pointsize];
   for(uint16_t i = 0; i < 2*pointsize * 2*pointsize; i++) H[i] = 0.0;
@@ -686,7 +703,7 @@ void SmoLine::qpOASES_XYsolver(const uint16_t pointsize)
     /********************/
     geometry_msgs::Point p;
 
-    ROS_WARN("XY hotstart,nWSR is:%d",nWSR);
+    // ROS_WARN("XY hotstart,nWSR is:%d",nWSR);
     qpOASES::real_t xOpt[2*pointsize];
     xy_oasesslover.getPrimalSolution(xOpt);
     for(int16_t i = 0; i < pointsize; i++)
@@ -700,73 +717,90 @@ void SmoLine::qpOASES_XYsolver(const uint16_t pointsize)
     // this->marker_pub_.publish(peak);
     this->trajline_pub_.publish(trajline_point);
     calc_traj_theta();
+    return true;
+  }else{
+    return false;
   }
 }
 
 
-void SmoLine::qpOASES_STinit()
-{
-  /**生成**/
-  H_ST_f = new qpOASES::real_t[arrayCapacity *arrayCapacity];
-  for(int16_t i = 0; i < arrayCapacity *arrayCapacity; i++) H_ST_f[i] = 0.0;
+void SmoLine::qpOASES_STinit(){
+  /******0.5x'Hx + f'x*******/
+  H_ST_f = new qpOASES::real_t[3*divisionTime_num * 3*divisionTime_num];
 
-  f_ST_f = new qpOASES::real_t[arrayCapacity * 1];
-  for(int16_t i = 0; i < arrayCapacity; i++) f_ST_f[i] = 0.0;
+  for(int16_t i = 0; i < 3*divisionTime_num * 3*divisionTime_num; i++)
+    H_ST_f[i] = 0.0;
 
-  Eigen::MatrixXd A1(3, 3);//生成平滑代价矩阵
-  A1 << 1, -2,  1,
-       -2,  4, -2,
-        1, -2,  1;
-
-  for(int16_t i = 0; i < arrayCapacity-2; i++)
-    for(int16_t j = 0; j < 3; j++)
-    {
-      //每3个点(3个参数)作为变量去计算代价；因此每换一个点就需要偏移一行一列
-      H_ST_f[(arrayCapacity)*(i + j) + i + 0] += A1(j, 0) * 2*this->w_st_smooth;
-      H_ST_f[(arrayCapacity)*(i + j) + i + 1] += A1(j, 1) * 2*this->w_st_smooth;
-      H_ST_f[(arrayCapacity)*(i + j) + i + 2] += A1(j, 2) * 2*this->w_st_smooth;
-    }
-
-  for(int16_t i = 0; i < arrayCapacity; i++)//生成期望速度代价
-    H_ST_f[arrayCapacity*i + i] += 2*this->w_st_ref;
-
-  for(int16_t i = 0; i < arrayCapacity; i++)//在路程间距固定的情况下，时间与速度相挂钩
-    f_ST_f[i] = this->ds*i/this->lon_speed * this->w_st_ref;
-
-  /**生成不等式约束，及 V<Vmax。  间隔以固定，可以通过时间变化量来进行约束 t2-t1>ds/Vmax**/
-  A_ST_f = new qpOASES::real_t[(arrayCapacity - 1) * arrayCapacity];
-  for(int16_t i = 0; i < (arrayCapacity - 1) * arrayCapacity; i++) A_ST_f[i] = 0.0;
-  for(int16_t i = 0; i < (arrayCapacity - 1); i++)
-  {
-    A_ST_f[arrayCapacity*i + i + 0] = -1;
-    A_ST_f[arrayCapacity*i + i + 1] =  1;
+  for(int16_t i = 0; i < divisionTime_num; i++){
+    H_ST_f[(3 * i + 0) * 3*divisionTime_num + (3 * i + 0)] = 2 * this->w_cost_s;
+    H_ST_f[(3 * i + 1) * 3*divisionTime_num + (3 * i + 1)] = 2 * this->w_cost_speed;
+    H_ST_f[(3 * i + 2) * 3*divisionTime_num + (3 * i + 2)] = 2 * this->w_cost_acc;
   }
 
-  lbA_ST_f = new qpOASES::real_t[(arrayCapacity - 1)];
-  for(int16_t i = 0; i < (arrayCapacity - 1); i++)
-    lbA_ST_f[i] = this->ds/this->max_speed;
+  for(int16_t i = 1; i < divisionTime_num; i++){
+    /**  a1^2 + a0^2 - 2*a0*a1 **/
+    H_ST_f[(3 * i + 2) * 3*divisionTime_num + (3 * i + 2)] += 2 * this->w_cost_jerk;//acc1
+    H_ST_f[(3 * i - 1) * 3*divisionTime_num + (3 * i - 1)] += 2 * this->w_cost_jerk;//acc0
 
-  ubA_ST_f = new qpOASES::real_t[(arrayCapacity - 1)];
+    H_ST_f[(3 * i + 2) * 3*divisionTime_num + (3 * i - 1)] +=-2 * this->w_cost_jerk;// 2*a1*a0
+    H_ST_f[(3 * i - 1) * 3*divisionTime_num + (3 * i + 2)] +=-2 * this->w_cost_jerk;
+  }
 
-  /***生成凸空间**/
-  lb_ST_f = new qpOASES::real_t[arrayCapacity];
-  ub_ST_f = new qpOASES::real_t[arrayCapacity];
-  for(int16_t i = 0; i < arrayCapacity; i++)
-  {
-    lb_ST_f[i] = 0.0;
-    ub_ST_f[i] = 25.0;
+  f_ST_f = new qpOASES::real_t[3*divisionTime_num];
+
+  for(int16_t i = 0; i < 3*divisionTime_num; i++)
+    f_ST_f[i] = 0.0;
+
+  for(int16_t i = 0; i < divisionTime_num; i++){
+    f_ST_f[3 * i + 0] = -2 * this->w_cost_s * dt * i;
+    f_ST_f[3 * i + 1] = -2 * this->w_cost_speed * lon_speed;
+  }
+
+  /*******lbA <= Ax <= ubA******/
+  Eigen::MatrixXd Aeq_sub(2, 6);//生成等式约束的矩阵,生成Aeq_sub
+  Aeq_sub << 1,  dt,     dt*dt/3,  -1,   0,    dt*dt/6,
+             0,  1,      dt/2,      0,  -1,    dt/2;
+
+  A_ST_f = new qpOASES::real_t[3*divisionTime_num * 2*(divisionTime_num - 1)];
+  for(int16_t i = 0; i < 3*divisionTime_num * 2*(divisionTime_num - 1); i++)
+    A_ST_f[i] = 0.0;
+
+  for(uint16_t i = 0; i < divisionTime_num - 1; i++) //循环导入等式矩阵
+    for(uint16_t j = 0; j < 6; j++){
+      A_ST_f[(2*i + 0)*(3*divisionTime_num) + (3*i + j)] = Aeq_sub(0, j);
+      A_ST_f[(2*i + 1)*(3*divisionTime_num) + (3*i + j)] = Aeq_sub(1, j);
+    }
+
+  lbA_ST_f = new qpOASES::real_t[2*(divisionTime_num - 1)];
+  ubA_ST_f = new qpOASES::real_t[2*(divisionTime_num - 1)];
+
+  for(int16_t i = 0; i < 2*(divisionTime_num - 1); i++)
+    lbA_ST_f[i] = ubA_ST_f[i] = 0.0;
+
+  /*********lb <= x <= ub********/
+  lb_ST_f = new qpOASES::real_t[3*divisionTime_num];
+  ub_ST_f = new qpOASES::real_t[3*divisionTime_num];
+
+  for(int16_t i = 0; i < divisionTime_num; i++){
+    lb_ST_f[3 * i + 0] = 0;
+    ub_ST_f[3 * i + 0] = 20;
+
+    lb_ST_f[3 * i + 1] = 0;
+    ub_ST_f[3 * i + 1] = max_speed;
+
+    lb_ST_f[3 * i + 2] = min_acc;
+    ub_ST_f[3 * i + 2] = max_acc;
   }
 
   st_fulloasesslover.setPrintLevel(qpOASES::PL_NONE);
 
   qpOASES::int_t nWSR = 1000;
   qpOASES::returnValue smoresult;
-  smoresult = st_fulloasesslover.init(H_ST_f,f_ST_f,A_ST_f,lb_ST_f,ub_ST_f,lbA_ST_f,NULL,nWSR);
+  smoresult = st_fulloasesslover.init(H_ST_f,f_ST_f,A_ST_f,lb_ST_f,ub_ST_f,lbA_ST_f,ubA_ST_f,nWSR);
 
   if(smoresult == qpOASES::SUCCESSFUL_RETURN)
-    ROS_WARN("ST slover has successful init");
-  else
-  {
+    ROS_WARN("St slover has successful init");
+  else{
     ROS_WARN("error code %d",smoresult);
     throw std::runtime_error("ST slover fault init");
   }
@@ -818,42 +852,76 @@ void SmoLine::qpOASES_STburn()
 }
 
 
-void SmoLine::qpOASES_STsolver()
-{
-  for(int16_t i = 0; i < arrayCapacity; i++)//在路程间距固定的情况下，时间与速度相挂钩
-    f_ST_f[i] = -trajline_s[i]/this->lon_speed * 2*this->w_st_ref;
+bool SmoLine::qpOASES_STsolver(){
 
-  for(int16_t i = 0; i < (arrayCapacity - 1); i++)
-    lbA_ST_f[i] = (trajline_s[i+1]-trajline_s[i])/this->max_speed;
+  for(int16_t i = 0; i < divisionTime_num; i++){
+    lb_ST_f[3 * i + 0] = STlb[i];
+    ub_ST_f[3 * i + 0] = STub[i];
 
-  for(int16_t i = 0; i < arrayCapacity; i++)
-  {
-    lb_ST_f[i] = TSlb[i];
-    ub_ST_f[i] = TSub[i];
+    lb_ST_f[3 * i + 1] = 0;
+    ub_ST_f[3 * i + 1] = max_speed;
+
+    lb_ST_f[3 * i + 2] = min_acc;
+    ub_ST_f[3 * i + 2] = max_acc;
   }
+
+  lb_ST_f[1] = ub_ST_f[1] = this->holdSpeed;
+  lb_ST_f[2] = ub_ST_f[2] = this->holdAcc;
 
   qpOASES::int_t nWSR = 1000;
   qpOASES::returnValue smoresult;
-  smoresult = st_fulloasesslover.hotstart(f_ST_f,lb_ST_f,ub_ST_f,lbA_ST_f,NULL,nWSR);
+  smoresult = st_fulloasesslover.hotstart(f_ST_f,lb_ST_f,ub_ST_f,lbA_ST_f,ubA_ST_f,nWSR);
 
-  if(smoresult == qpOASES::SUCCESSFUL_RETURN)
-  {
-    qpOASES::real_t xOpt[arrayCapacity];
+  qpOASES::real_t xOpt[3*divisionTime_num];
+
+  if(smoresult == qpOASES::SUCCESSFUL_RETURN){
     st_fulloasesslover.getPrimalSolution(xOpt);
 
-    for(int16_t i = 0; i < arrayCapacity-1; i++)
-      trajline_point.poses[i].pose.orientation.w = 
-      (trajline_s[i+1]-trajline_s[i])/(xOpt[i+1] - xOpt[i]);
+    int16_t matchIndex = 0;
+    for(int16_t i = 0; i < arraysize; i++){
+      while(matchIndex < divisionTime_num){
+        if(trajline_s[i] == xOpt[3 * matchIndex]){
+          trajline_point.poses[i].pose.orientation.x = xOpt[3 * matchIndex + 1];//速度
+          trajline_point.poses[i].pose.orientation.y = xOpt[3 * matchIndex + 2];//加速度
+          trajline_point.poses[i].pose.orientation.z = xOpt[3 * matchIndex + 0];//S
+          matchIndex++;
+          break;
+        }else if(trajline_s[i] < xOpt[3 * matchIndex]){
+          trajline_point.poses[i].pose.orientation.x = xOpt[3 * matchIndex - 2] + 
+            (trajline_s[i] - xOpt[3 * matchIndex - 3]) *
+            (xOpt[3 * matchIndex + 1] - xOpt[3 * matchIndex - 2]) / 
+            (xOpt[3 * matchIndex + 0] - xOpt[3 * matchIndex - 3]);
 
-    trajline_point.poses[arrayCapacity-1].pose.orientation.w = 
-    trajline_point.poses[arrayCapacity-2].pose.orientation.w;
-      
+          trajline_point.poses[i].pose.orientation.y = (xOpt[3 * matchIndex + 2] + xOpt[3 * matchIndex - 1])/2;
+          break;
+        }else if(trajline_s[i] > xOpt[3 * matchIndex]){
+          matchIndex++;
+        }
+      }
+    }
     this->trajline_pub_.publish(trajline_point);
 
-    // for(int16_t i =0; i < arrayCapacity;i++)
-    //  std::cout<<"("<<lb_ST_f[i]<<","<<ub_ST_f[i]<<")"<<std::endl;
-  }
+    // for(int16_t i = 0; i < divisionTime_num; i++){
+    //   ROS_WARN("(%f, %f)", STlb[i], STub[i]);
+    // }
+    // std::cout << std::endl;
+    // std::cout << std::endl;
+    // std::cout << std::endl;
+    // std::cout << std::endl;
 
+  // ROS_WARN("\rn");
+  // for(int16_t i = 0; i < arrayCapacity; i++){
+  //   ROS_WARN("%f", trajline_point.poses[i].pose.orientation.x);
+  // }
+
+    return true;
+  }else{
+    ROS_WARN("error code %d",smoresult);
+    for(int16_t i = 0; i < divisionTime_num; i++){
+      ROS_WARN("(%f, %f)", STlb[i], STub[i]);
+    }
+    throw std::runtime_error("ST slover fault init");
+  }
 }
 
 
