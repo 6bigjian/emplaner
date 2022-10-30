@@ -132,7 +132,7 @@ void ObsProj::Set_simulateMovObst()
     global_date::obj_mutex.lock();
 
     Move_Obstacle.clear();
-    // Move_Obstacle.push_back(MovObstacle(moveobj1, 2, 21));
+    Move_Obstacle.push_back(MovObstacle(moveobj1, 1.0, 21));
     Move_Obstacle.push_back(MovObstacle(moveobj2, 0.5, 11));
 
     global_date::obj_mutex.unlock();
@@ -247,7 +247,11 @@ TransferMoveObs:
     }
 
     Move_Obstacle[i].s_set = global_reference.s[match_index] + lon_err;
-    Move_Obstacle[i].l_set = lat_err;
+    // Move_Obstacle[i].l_set = lat_err;
+
+    if(lat_err > 0) Move_Obstacle[i].l_set = 1.0;//无脑给1
+    else Move_Obstacle[i].l_set = -1.0;//无脑给1
+
     Move_Obstacle[i].obs_flag = true;
   }
 }

@@ -251,8 +251,16 @@ bool SmoLine::qpOASES_SLsolver()
 
   if(this->retraj == false)
   {
-    for(uint16_t i = 0; i < retaintraj_num-vehTotraj_projIndex_; i++)
-      ub_SL_f[3*i] = lb_SL_f[3*i] = L_limit[i][3];
+    if(retaintraj_num-vehTotraj_projIndex_ > 0)
+    {
+      ub_SL_f[0] = lb_SL_f[0] = L_limit[0][3];
+
+      for(uint16_t i = 1; i < retaintraj_num-vehTotraj_projIndex_; i++)
+      {
+        ub_SL_f[3*i] = L_limit[i][3] + i*0.1;
+        lb_SL_f[3*i] = L_limit[i][3] - i*0.1;
+      }
+    }
   }
   else
   {

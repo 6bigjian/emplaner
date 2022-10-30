@@ -94,7 +94,7 @@ private:
 
   double w_cost_dl = 10;
   double w_cost_ddl = 60;
-  double w_cost_centre = 0.2;
+  double w_cost_centre = 0.5;
 
   double w_cost_smooth = 50.0;             //平滑代价
   double w_cost_length = 0.1;             //长度代价
